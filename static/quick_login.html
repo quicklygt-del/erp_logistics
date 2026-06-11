@@ -32,10 +32,10 @@
         }
 
         try {
-            const res = await fetch(`${API_BASE}/auth/quick-login`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ token: token })
+            // 改為 GET 請求，token 作為查詢參數
+            const res = await fetch(`${API_BASE}/auth/quick-login?token=${encodeURIComponent(token)}`, {
+                method: 'GET',
+                headers: { 'Content-Type': 'application/json' }
             });
 
             if (!res.ok) {
