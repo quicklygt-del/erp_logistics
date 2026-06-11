@@ -130,11 +130,16 @@ async def read_users_me(current_user: TokenData = Depends(get_current_user)):
 @router.get("/login-users")
 async def get_login_users():
     """返回所有可登录的活跃用户（用于登录页下拉框）"""
-    conn = await get_db_connection()
+    try:
+        conn = await get_db_connection()
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Database connection failed: {e}")
     try:
         rows = await conn.fetch(
             "SELECT username, full_name, role FROM system_users WHERE is_active = true ORDER BY role, username"
         )
         return [{"username": r["username"], "full_name": r["full_name"], "role": r["role"]} for r in rows]
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Failed to load users: {e}")
     finally:
         await conn.close()

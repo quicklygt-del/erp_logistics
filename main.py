@@ -285,12 +285,18 @@ async def get_tasks_summary(current_user: TokenData = Depends(get_current_user))
 
 @app.get("/health")
 async def health_check():
-    status = {"api": "healthy", "database": "unknown"}
+    status = {"api": "healthy", "database": "unknown", "system_users": "unknown"}
     try:
         conn = await get_db_connection()
         await conn.fetchval("SELECT 1")
-        await conn.close()
         status["database"] = "connected"
+        try:
+            count = await conn.fetchval("SELECT COUNT(*) FROM system_users")
+            status["system_users"] = f"ok ({count} users)"
+        except Exception as e:
+            status["system_users"] = f"error: {str(e)}"
+            status["api"] = "degraded"
+        await conn.close()
     except Exception as e:
         status["database"] = f"error: {str(e)}"
         status["api"] = "degraded"
