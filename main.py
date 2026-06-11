@@ -19,11 +19,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ========== 修改點 1：將靜態檔案目錄掛載到根路徑 ==========
-# 原本是 app.mount("/static", StaticFiles(directory="."), name="static")
-# 改為掛載 static 資料夾到根路徑，並啟用 html 模式
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
-
 app.include_router(materials.router, prefix="/api/v1/materials", tags=["materials"])
 app.include_router(documents.router, prefix="/api/v1/documents", tags=["documents"])
 app.include_router(quality.router, prefix="/api/v1/quality", tags=["quality"])
@@ -301,7 +296,9 @@ async def health_check():
         status["api"] = "degraded"
     return status
 
-# ========== 修改點 2：根路徑重導向到 /login.html（不再需要 /static 前綴） ==========
 @app.get("/")
 async def root():
     return RedirectResponse(url="/login.html")
+
+# 靜態檔必須掛在所有 API 路由之後，否則會攔截 /api/* 請求導致 404
+app.mount("/", StaticFiles(directory="static", html=True), name="static")

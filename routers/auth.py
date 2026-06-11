@@ -9,7 +9,11 @@ from database import get_db_connection
 import os
 
 # 從環境變數讀取敏感資訊（若無則使用預設值，但生產環境務必設定）
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-this-in-production")
+SECRET_KEY = (
+    os.getenv("SECRET_KEY")
+    or os.getenv("JWT_SECRET_KEY")
+    or "your-secret-key-change-this-in-production"
+)
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
 
