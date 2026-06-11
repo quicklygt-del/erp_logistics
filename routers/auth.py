@@ -40,7 +40,10 @@ def verify_password(plain_password, hashed_password):
 
 async def authenticate_user(username_or_name: str, password: str):
     """支持用户名或姓名登录"""
-    conn = await get_db_connection()
+    try:
+        conn = await get_db_connection()
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Database connection failed: {e}")
     try:
         row = await conn.fetchrow(
             "SELECT username, hashed_password, role, is_active FROM system_users WHERE (username = $1 OR full_name = $1) AND is_active = true",
@@ -51,6 +54,10 @@ async def authenticate_user(username_or_name: str, password: str):
         if not verify_password(password, row['hashed_password']):
             return False
         return dict(row)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Database error: {e}")
     finally:
         await conn.close()
 

@@ -24,11 +24,28 @@
 <script>
     const API_BASE = "/api/v1";
 
+    async function parseApiError(res) {
+        const text = await res.text();
+        if (!text) return `HTTP ${res.status}`;
+        try {
+            const data = JSON.parse(text);
+            if (typeof data.detail === 'string') return data.detail;
+            if (Array.isArray(data.detail)) return data.detail.map(d => d.msg || JSON.stringify(d)).join('; ');
+            return text;
+        } catch {
+            return text;
+        }
+    }
+
     async function loadLoginUsers() {
         const select = document.getElementById('username');
+        const errorDiv = document.getElementById('errorMsg');
         try {
             const res = await fetch(`${API_BASE}/auth/login-users`);
-            if (!res.ok) throw new Error('無法載入用戶列表');
+            if (!res.ok) {
+                const msg = await parseApiError(res);
+                throw new Error(msg || '無法載入用戶列表');
+            }
             const users = await res.json();
             if (!users.length) {
                 select.innerHTML = '<option value="">暫無可用帳號</option>';
@@ -45,6 +62,8 @@
         } catch (e) {
             console.error('載入用戶列表失敗', e);
             select.innerHTML = '<option value="">⚠️ 載入失敗，請重新整理頁面</option>';
+            errorDiv.innerText = '載入帳號失敗: ' + e.message;
+            errorDiv.classList.remove('hidden');
             // 增加重試按鈕（避免使用者卡住）
             const existingBtn = document.querySelector('#retryLoadUsersBtn');
             if (!existingBtn) {
@@ -77,8 +96,7 @@
                 body: formData
             });
             if (!tokenRes.ok) {
-                const err = await tokenRes.json();
-                errorDiv.innerText = err.detail || '登入失敗';
+                errorDiv.innerText = await parseApiError(tokenRes) || '登入失敗';
                 errorDiv.classList.remove('hidden');
                 return;
             }
@@ -89,7 +107,7 @@
             const meRes = await fetch(`${API_BASE}/auth/users/me`, {
                 headers: { 'Authorization': `Bearer ${accessToken}` }
             });
-            if (!meRes.ok) throw new Error('無法獲取用戶信息');
+            if (!meRes.ok) throw new Error(await parseApiError(meRes) || '無法獲取用戶信息');
             const me = await meRes.json();
             localStorage.setItem('user_role', me.role);
             localStorage.setItem('username', me.username);
