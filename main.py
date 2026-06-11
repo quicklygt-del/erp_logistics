@@ -19,6 +19,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# API 路由（必須在靜態檔案掛載之前）
 app.include_router(materials.router, prefix="/api/v1/materials", tags=["materials"])
 app.include_router(documents.router, prefix="/api/v1/documents", tags=["documents"])
 app.include_router(quality.router, prefix="/api/v1/quality", tags=["quality"])
@@ -302,9 +303,49 @@ async def health_check():
         status["api"] = "degraded"
     return status
 
+# ========== 查看指定使用者的任務統計（供主管使用） ==========
+@app.get("/api/v1/admin/user-tasks/{username}")
+async def get_user_tasks(username: str, current_user: TokenData = Depends(get_current_user)):
+    """取得指定使用者的任務統計 (入庫、檢貨、盤點)"""
+    if current_user.role not in ['admin', 'warehouse']:
+        raise HTTPException(403, "權限不足")
+    
+    conn = await get_db_connection()
+    try:
+        # 入庫任務數量 (待處理或進行中)
+        inbound_count = await conn.fetchval(
+            "SELECT COUNT(*) FROM inbound_tasks WHERE assigned_to = $1 AND status IN ('pending', 'in_progress')",
+            username
+        )
+        # 檢貨任務數量 (待指派、待檢貨、進行中)
+        picking_count = await conn.fetchval(
+            """
+            SELECT COUNT(DISTINCT doc_number)
+            FROM documents
+            WHERE doc_type = 'manufacture'
+              AND assigned_picker = $1
+              AND picking_status IN ('待指派', '待檢貨', '進行中')
+            """,
+            username
+        )
+        # 盤點任務數量 (待盤點、進行中)
+        stocktake_count = await conn.fetchval(
+            "SELECT COUNT(*) FROM stock_take_sheets WHERE assigned_to = $1 AND status IN ('待盤點', '進行中')",
+            username
+        )
+        return {
+            "username": username,
+            "inbound_tasks": inbound_count or 0,
+            "picking_tasks": picking_count or 0,
+            "stocktake_tasks": stocktake_count or 0,
+            "total_tasks": (inbound_count or 0) + (picking_count or 0) + (stocktake_count or 0)
+        }
+    finally:
+        await conn.close()
+
 @app.get("/")
 async def root():
     return RedirectResponse(url="/login.html")
 
-# 靜態檔必須掛在所有 API 路由之後，否則會攔截 /api/* 請求導致 404
+# 靜態檔案必須掛在所有 API 路由之後，否則會攔截 /api/* 請求導致 404
 app.mount("/", StaticFiles(directory="static", html=True), name="static")

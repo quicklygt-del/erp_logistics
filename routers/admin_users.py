@@ -160,7 +160,6 @@ async def generate_qr_token(user_id: int, current_user: TokenData = Depends(get_
     finally:
         await conn.close()
 
-
 @router.get("/by-role/{role_name}")
 async def get_users_by_role(role_name: str, current_user: TokenData = Depends(get_current_user)):
     if current_user.role not in ['admin', 'warehouse']:
