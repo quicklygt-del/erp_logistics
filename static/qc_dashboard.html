@@ -2,56 +2,142 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
     <title>品保工作台 - IQC</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <style>
-        .inspect-table td, .inspect-table th {
-            color: #1f2937;
-            border-color: #d1d5db;
+        * {
+            -webkit-tap-highlight-color: transparent;
         }
-        .inspect-table input {
-            color: #111827;
-            background-color: #fff;
+        body {
+            font-size: 16px;
         }
-        .clear-btn {
-            background-color: #e5e7eb;
-            color: #1f2937;
+        /* 按钮最小高度 */
+        .touch-btn {
+            min-height: 48px;
+            font-size: 1rem;
+            padding: 0.5rem 1rem;
         }
-        .clear-btn:hover {
-            background-color: #d1d5db;
+        .touch-input {
+            font-size: 1rem;
+            padding: 0.75rem;
+        }
+        /* 卡片内输入框 */
+        .card-input {
+            font-size: 1rem;
+            padding: 0.5rem;
+            width: 80px;
+            text-align: center;
+        }
+        /* 物料卡片 */
+        .material-card {
+            background: white;
+            border-radius: 16px;
+            border: 1px solid #e5e7eb;
+            padding: 0.75rem;
+            margin-bottom: 0.75rem;
+            transition: background 0.2s;
+        }
+        .material-card.highlight {
+            background-color: #fff3cd;
+        }
+        /* 汉堡菜单面板 */
+        .menu-panel {
+            position: fixed;
+            top: 0;
+            right: -280px;
+            width: 280px;
+            height: 100%;
+            background: white;
+            box-shadow: -2px 0 12px rgba(0,0,0,0.15);
+            z-index: 50;
+            transition: right 0.3s ease;
+            padding-top: 70px;
+        }
+        .menu-panel.open {
+            right: 0;
+        }
+        .menu-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            z-index: 40;
+            display: none;
+        }
+        .menu-overlay.show {
+            display: block;
+        }
+        /* 桌面版辅助：限制卡片最大宽度 */
+        @media (min-width: 768px) {
+            .material-card {
+                max-width: 800px;
+                margin-left: auto;
+                margin-right: auto;
+            }
         }
     </style>
 </head>
 <body class="bg-gray-100">
-<div class="container mx-auto px-4 py-6 max-w-7xl">
+
+<!-- 汉堡菜单面板 -->
+<div id="menuOverlay" class="menu-overlay" onclick="closeMenu()"></div>
+<div id="menuPanel" class="menu-panel">
+    <div class="px-4 py-2 border-b">
+        <h3 class="text-lg font-bold">功能選單</h3>
+    </div>
+    <div class="flex flex-col">
+        <a href="stock_query.html" class="block px-4 py-3 hover:bg-gray-100 border-b">📊 庫存查詢</a>
+        <a href="history.html" class="block px-4 py-3 hover:bg-gray-100 border-b">📜 歷史紀錄</a>
+        <a href="reprint_qr.html" class="block px-4 py-3 hover:bg-gray-100 border-b">🖨️ QR列印</a>
+        <button onclick="logout()" class="text-left px-4 py-3 hover:bg-gray-100 border-b text-red-600">🔓 登出</button>
+    </div>
+</div>
+
+<div class="container mx-auto px-3 py-4 max-w-5xl">
+    <!-- 頂部標題 + 漢堡選單按鈕 -->
     <div class="flex justify-between items-center mb-4">
         <h1 class="text-2xl font-bold">🔬 品保工作台</h1>
-        <div class="space-x-2">
-            <a href="stock_query.html" class="bg-blue-500 text-white px-3 py-1 rounded text-sm">庫存查詢</a>
-            <a href="history.html" class="bg-blue-500 text-white px-3 py-1 rounded text-sm">歷史紀錄</a>
-            <a href="reprint_qr.html" class="bg-blue-500 text-white px-3 py-1 rounded text-sm">QR列印</a>
-            <button onclick="logout()" class="bg-red-500 text-white px-3 py-1 rounded text-sm">登出</button>
+        <button id="menuBtn" class="bg-gray-200 p-2 rounded-full w-12 h-12 flex items-center justify-center text-xl">☰</button>
+    </div>
+
+    <!-- 待驗單據下拉選擇 -->
+    <div class="bg-white rounded-xl shadow p-4 mb-4">
+        <label class="block font-medium mb-2">📄 選擇待驗單據</label>
+        <div class="flex gap-2">
+            <select id="pendingDocSelect" class="border rounded-lg p-3 flex-1 touch-input bg-white">
+                <option value="">-- 載入中 --</option>
+            </select>
+            <button id="refreshDocsBtn" class="bg-blue-600 text-white px-4 py-2 rounded-lg touch-btn">重新整理</button>
         </div>
     </div>
 
-    <div id="iqcPanel" style="display:block;">
-        <div class="bg-white p-5 rounded shadow">
-            <div class="flex justify-between items-center mb-3">
-                <h2 class="text-xl font-bold">🔬 品保 IQC</h2>
-                <button id="refreshPendingBtn" class="bg-blue-600 text-white px-3 py-1 rounded">重新整理待驗</button>
-            </div>
-            <div class="grid md:grid-cols-3 gap-4">
-                <div class="border rounded p-2">
-                    <div id="pendingDocList" class="max-h-96 overflow-auto">載入中...</div>
-                </div>
-                <div class="md:col-span-2 border rounded p-2">
-                    <div id="inspectDetailArea" class="text-center text-gray-400 py-8">請選擇待驗單據</div>
-                </div>
-            </div>
+    <!-- 掃描輸入區 -->
+    <div class="bg-white rounded-xl shadow p-4 mb-4">
+        <div class="mb-3">
+            <label class="block font-medium mb-1">📷 掃描或輸入料號</label>
+            <input type="text" id="scanMaterialCode" placeholder="掃描或手動輸入料號" class="w-full border rounded-lg p-3 touch-input" autocomplete="off">
         </div>
+        <div class="flex flex-wrap gap-2 items-center">
+            <div class="flex-1">
+                <label class="block text-sm">數量</label>
+                <input type="number" id="scanQty" value="1" class="border rounded-lg p-3 w-full touch-input" min="1">
+            </div>
+            <button id="scanBtn" class="bg-purple-600 text-white px-6 py-3 rounded-lg touch-btn flex-1 min-w-[120px]">📷 掃描</button>
+        </div>
+        <div id="reader" class="hidden mt-3"></div>
+    </div>
+
+    <!-- 物料卡片列表區域 -->
+    <div id="itemsContainer" class="mb-4">
+        <div id="itemsLoading" class="text-center py-8 text-gray-500">請選擇待驗單據</div>
+    </div>
+
+    <!-- 確認檢驗按鈕（固定底部，避免滾動後找不到） -->
+    <div class="sticky bottom-4 bg-white rounded-xl shadow-lg p-3 border-t mt-2">
+        <button id="submitInspectBtn" class="bg-green-600 text-white w-full py-4 rounded-xl text-lg font-bold touch-btn">✅ 確認檢驗</button>
+        <div id="submitMsg" class="text-sm mt-2 text-center"></div>
     </div>
 </div>
 
@@ -60,6 +146,12 @@
     let token = localStorage.getItem('access_token');
     if (!token) { alert('請先登入'); location.href = 'login.html'; }
 
+    let currentDocNumber = "";
+    let currentItems = [];          // 儲存原始檢驗資料
+    let html5QrCode = null;
+    let activeScanner = null;
+
+    // 輔助函數
     async function apiFetch(url, opts = {}) {
         opts.headers = {
             'Content-Type': 'application/json',
@@ -77,207 +169,248 @@
         return res.json();
     }
 
-    function escapeHtml(s) { if (!s) return ''; return s.replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m])); }
+    function escapeHtml(s) { return String(s).replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m])); }
 
-    async function loadPending() {
+    // 載入待驗單據下拉選單
+    async function loadPendingDocs() {
         try {
             const docs = await apiFetch(`${API_BASE}/quality/pending`);
-            const container = document.getElementById('pendingDocList');
+            const select = document.getElementById('pendingDocSelect');
             if (!docs.length) {
-                container.innerHTML = '<div class="text-gray-400 text-center py-4">無待驗單據</div>';
+                select.innerHTML = '<option value="">無待驗單據</option>';
                 return;
             }
-            container.innerHTML = docs.map(d => `
-                <div class="border rounded p-2 mb-2 cursor-pointer hover:bg-gray-100 pending-item" data-doc="${escapeHtml(d.doc_number)}">
-                    <div class="font-mono">${escapeHtml(d.doc_number)}</div>
-                    <div class="text-sm text-gray-500">${d.doc_type === 'purchase' ? '採購' : '製令'}</div>
-                </div>
-            `).join('');
-            document.querySelectorAll('.pending-item').forEach(el => el.addEventListener('click', () => loadPendingDetails(el.dataset.doc)));
-        } catch(e) { console.error(e); }
+            select.innerHTML = '<option value="">-- 請選擇 --</option>' +
+                docs.map(d => `<option value="${escapeHtml(d.doc_number)}">${escapeHtml(d.doc_number)} (${d.doc_type === 'purchase' ? '採購' : '製令'})</option>`).join('');
+        } catch(e) {
+            console.error(e);
+            alert('載入單據失敗: ' + e.message);
+        }
     }
 
-    async function loadPendingDetails(docNumber) {
+    // 選擇單據後載入明細
+    async function loadDocDetails(docNumber) {
+        if (!docNumber) {
+            document.getElementById('itemsContainer').innerHTML = '<div class="text-center py-8 text-gray-500">請選擇待驗單據</div>';
+            currentItems = [];
+            return;
+        }
+        document.getElementById('itemsContainer').innerHTML = '<div class="text-center py-8">載入中...</div>';
         try {
             const data = await apiFetch(`${API_BASE}/quality/pending/${docNumber}`);
             const details = data.details || [];
             if (!details.length) {
-                document.getElementById('inspectDetailArea').innerHTML = '<div class="text-center py-8 text-gray-400">該單據無明細</div>';
+                document.getElementById('itemsContainer').innerHTML = '<div class="text-center py-8 text-gray-500">該單據無明細</div>';
+                currentItems = [];
                 return;
             }
-            let html = `
-                <div class="mb-3 flex gap-2 items-center">
-                    <input type="text" id="scanMaterialInput" placeholder="掃描或輸入料號 (按Enter定位)" class="border flex-1 p-2 rounded" autofocus>
-                    <button id="iqcScanMaterialBtn" class="bg-purple-600 text-white px-3 py-2 rounded">📷 掃描</button>
-                </div>
-                <div class="overflow-x-auto max-h-96">
-                    <table class="min-w-full border text-sm inspect-table">
-                        <thead class="bg-gray-50">
-                            <tr><th class="p-2">料號</th><th class="p-2">品名</th><th class="p-2">規格</th><th class="p-2">已收數量</th><th class="p-2">良品數量</th><th class="p-2">不良數量</th><th class="p-2">操作</th></tr>
-                        </thead>
-                        <tbody id="inspectItemsBody"></tbody>
-                    </table>
-                </div>
-                <div class="mt-3 flex justify-end"><button id="submitIQC" class="bg-green-600 text-white px-5 py-2 rounded">✅ 確認檢驗</button></div>
-            `;
-            document.getElementById('inspectDetailArea').innerHTML = html;
-
-            const tbody = document.getElementById('inspectItemsBody');
-            const originalQtys = {};
-            tbody.innerHTML = details.map(d => {
-                const originalQty = d.accepted_qty || d.required_qty || 0;
-                originalQtys[d.material_code] = originalQty;
-                return `
-                    <tr data-code="${escapeHtml(d.material_code)}" class="border-b">
-                        <td class="p-2 font-mono">${escapeHtml(d.material_code)}</td>
-                        <td class="p-2">${escapeHtml(d.material_name || '')}</td>
-                        <td class="p-2">${escapeHtml(d.spec || '')}</td>
-                        <td class="p-2 text-center">${originalQty}</td>
-                        <td class="p-2"><input type="number" class="pass-qty w-20 border text-center" data-code="${escapeHtml(d.material_code)}" value="0" min="0" step="1" onfocus="this.select()"></td>
-                        <td class="p-2"><input type="number" class="fail-qty w-20 border text-center" data-code="${escapeHtml(d.material_code)}" value="0" min="0" step="1" onfocus="this.select()"></td>
-                        <td class="p-2"><button class="clear-row clear-btn px-2 py-1 rounded text-xs" data-code="${escapeHtml(d.material_code)}">清除輸入</button></td>
-                    </tr>
-                `;
-            }).join('');
-
-            const passInputs = document.querySelectorAll('.pass-qty');
-            const failInputs = document.querySelectorAll('.fail-qty');
-            const updateByPass = (passInp, failInp, originalQty) => {
-                let passVal = parseInt(passInp.value) || 0;
-                if (passVal > originalQty) passVal = originalQty;
-                passInp.value = passVal;
-                failInp.value = originalQty - passVal;
-            };
-            const updateByFail = (failInp, passInp, originalQty) => {
-                let failVal = parseInt(failInp.value) || 0;
-                if (failVal > originalQty) failVal = originalQty;
-                failInp.value = failVal;
-                passInp.value = originalQty - failVal;
-            };
-            passInputs.forEach(inp => {
-                const code = inp.dataset.code;
-                const originalQty = originalQtys[code];
-                const failInp = document.querySelector(`.fail-qty[data-code="${code}"]`);
-                inp.addEventListener('change', () => updateByPass(inp, failInp, originalQty));
-                inp.addEventListener('input', () => updateByPass(inp, failInp, originalQty));
-            });
-            failInputs.forEach(inp => {
-                const code = inp.dataset.code;
-                const originalQty = originalQtys[code];
-                const passInp = document.querySelector(`.pass-qty[data-code="${code}"]`);
-                inp.addEventListener('change', () => updateByFail(inp, passInp, originalQty));
-                inp.addEventListener('input', () => updateByFail(inp, passInp, originalQty));
-            });
-            document.querySelectorAll('.clear-row').forEach(btn => {
-                btn.onclick = () => {
-                    const code = btn.dataset.code;
-                    const passInp = document.querySelector(`.pass-qty[data-code="${code}"]`);
-                    const failInp = document.querySelector(`.fail-qty[data-code="${code}"]`);
-                    passInp.value = 0;
-                    failInp.value = 0;
-                };
-            });
-
-            const inspectArea = document.getElementById('inspectDetailArea');
-            const scanInput = inspectArea.querySelector('#scanMaterialInput');
-            const scrollToRow = (code) => {
-                const row = [...document.querySelectorAll('#inspectItemsBody tr')].find(r => r.dataset.code === code);
-                if (row) {
-                    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    row.style.backgroundColor = '#fff3cd';
-                    setTimeout(() => row.style.backgroundColor = '', 1000);
-                    const passInput = row.querySelector('.pass-qty');
-                    if (passInput) passInput.focus();
-                } else {
-                    alert(`找不到料號: ${code}`);
-                }
-            };
-            scanInput.onkeypress = (e) => {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    scrollToRow(scanInput.value.trim());
-                    scanInput.value = '';
-                }
-            };
-
-            // ========== 新增真正的掃描功能 ==========
-            let html5QrCode = null;
-            async function startCamera() {
-                const readerDiv = document.createElement('div');
-                readerDiv.id = 'tempQrReader';
-                readerDiv.style.position = 'fixed';
-                readerDiv.style.top = '0';
-                readerDiv.style.left = '0';
-                readerDiv.style.width = '100%';
-                readerDiv.style.height = '100%';
-                readerDiv.style.backgroundColor = 'black';
-                readerDiv.style.zIndex = '1000';
-                readerDiv.innerHTML = `<div id="qr-reader" style="width:100%; height:100%;"></div><button id="closeReader" style="position:absolute; top:20px; right:20px; background:white; padding:8px; border-radius:8px;">關閉</button>`;
-                document.body.appendChild(readerDiv);
-                const qrReader = new Html5Qrcode("qr-reader");
-                html5QrCode = qrReader;
-                try {
-                    await qrReader.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } },
-                        (decodedText) => {
-                            qrReader.stop();
-                            document.body.removeChild(readerDiv);
-                            scanInput.value = decodedText;
-                            scrollToRow(decodedText);
-                            scanInput.value = '';
-                        },
-                        () => {}
-                    );
-                    document.getElementById('closeReader').onclick = () => {
-                        qrReader.stop();
-                        document.body.removeChild(readerDiv);
-                    };
-                } catch(e) {
-                    alert('無法啟動相機: ' + e);
-                    document.body.removeChild(readerDiv);
-                }
-            }
-            const scanBtn = inspectArea.querySelector('#iqcScanMaterialBtn');
-            // 原本的掃描按鈕事件改為啟動相機
-            scanBtn.onclick = () => {
-                if (html5QrCode) {
-                    html5QrCode.stop().catch(console.warn);
-                }
-                startCamera();
-            };
-
-            document.getElementById('submitIQC').onclick = async () => {
-                const items = [];
-                for (let row of document.querySelectorAll('#inspectItemsBody tr')) {
-                    const code = row.dataset.code;
-                    const passVal = parseInt(row.querySelector('.pass-qty').value) || 0;
-                    const failVal = parseInt(row.querySelector('.fail-qty').value) || 0;
-                    items.push({ material_code: code, pass_qty: passVal, fail_qty: failVal });
-                }
-                if (items.length === 0) { alert('無檢驗項目'); return; }
-                const operator = localStorage.getItem('username') || 'qc';
-                try {
-                    const res = await fetch(`${API_BASE}/quality/${docNumber}/inspect`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                        body: JSON.stringify({ operator, items })
-                    });
-                    if (res.ok) {
-                        alert('檢驗完成，單據已轉為檢驗完成');
-                        loadPending();
-                        document.getElementById('inspectDetailArea').innerHTML = '<div class="text-center py-8 text-gray-400">檢驗完成，可選擇下一筆</div>';
-                    } else {
-                        const err = await res.json();
-                        alert(`檢驗失敗: ${err.detail}`);
-                    }
-                } catch(e) { alert(`請求錯誤: ${e.message}`); }
-            };
-        } catch(e) { alert('載入明細失敗'); }
+            // 建立內部資料結構
+            currentItems = details.map(d => ({
+                material_code: d.material_code,
+                material_name: d.material_name || '',
+                spec: d.spec || '',
+                received_qty: d.accepted_qty || d.required_qty || 0,
+                pass_qty: 0,
+                fail_qty: 0
+            }));
+            renderItems();
+        } catch(e) {
+            console.error(e);
+            document.getElementById('itemsContainer').innerHTML = '<div class="text-center py-8 text-red-500">載入失敗</div>';
+        }
     }
 
-    document.getElementById('refreshPendingBtn').onclick = loadPending;
-    function logout() { localStorage.clear(); location.href = 'login.html'; }
+    // 渲染物料卡片
+    function renderItems() {
+        const container = document.getElementById('itemsContainer');
+        if (!currentItems.length) {
+            container.innerHTML = '<div class="text-center py-8 text-gray-500">無物料資料</div>';
+            return;
+        }
+        container.innerHTML = currentItems.map((item, idx) => `
+            <div class="material-card" data-code="${escapeHtml(item.material_code)}" data-idx="${idx}">
+                <div class="font-bold text-lg">${escapeHtml(item.material_code)} ${escapeHtml(item.material_name)}</div>
+                <div class="text-gray-600 text-sm mb-1">規格：${escapeHtml(item.spec)}</div>
+                <div class="text-gray-700 mb-2">已收數量：<span class="font-semibold">${item.received_qty}</span></div>
+                <div class="flex flex-wrap gap-3 items-center mb-2">
+                    <div class="flex-1">
+                        <label class="block text-xs text-gray-500">良品數量</label>
+                        <input type="number" class="pass-qty border rounded-lg p-2 w-full card-input" value="${item.pass_qty}" min="0" max="${item.received_qty}" data-idx="${idx}">
+                    </div>
+                    <div class="flex-1">
+                        <label class="block text-xs text-gray-500">不良數量</label>
+                        <input type="number" class="fail-qty border rounded-lg p-2 w-full card-input" value="${item.fail_qty}" min="0" max="${item.received_qty}" data-idx="${idx}">
+                    </div>
+                    <button class="clear-card bg-gray-200 px-3 py-2 rounded-lg touch-btn text-sm" data-idx="${idx}">清除輸入</button>
+                </div>
+            </div>
+        `).join('');
 
-    loadPending();
+        // 綁定輸入事件，保持良品+不良不超過已收數量
+        document.querySelectorAll('.pass-qty').forEach(inp => {
+            inp.addEventListener('change', (e) => updatePassFail(e.target.dataset.idx));
+            inp.addEventListener('input', (e) => updatePassFail(e.target.dataset.idx));
+        });
+        document.querySelectorAll('.fail-qty').forEach(inp => {
+            inp.addEventListener('change', (e) => updatePassFail(e.target.dataset.idx));
+            inp.addEventListener('input', (e) => updatePassFail(e.target.dataset.idx));
+        });
+        document.querySelectorAll('.clear-card').forEach(btn => {
+            btn.onclick = () => {
+                const idx = btn.dataset.idx;
+                currentItems[idx].pass_qty = 0;
+                currentItems[idx].fail_qty = 0;
+                renderItems();
+                // 重新聚焦到該卡片的良品輸入框
+                const card = document.querySelector(`.material-card[data-idx="${idx}"]`);
+                if (card) card.querySelector('.pass-qty')?.focus();
+            };
+        });
+    }
+
+    function updatePassFail(idx) {
+        const passInp = document.querySelector(`.pass-qty[data-idx="${idx}"]`);
+        const failInp = document.querySelector(`.fail-qty[data-idx="${idx}"]`);
+        if (!passInp || !failInp) return;
+        let pass = parseInt(passInp.value) || 0;
+        let fail = parseInt(failInp.value) || 0;
+        const received = currentItems[idx].received_qty;
+        if (pass + fail > received) {
+            // 優先調整不良（依業務習慣，也可以調整良品）
+            if (pass > received) pass = received;
+            if (pass + fail > received) fail = received - pass;
+            passInp.value = pass;
+            failInp.value = fail;
+        }
+        currentItems[idx].pass_qty = pass;
+        currentItems[idx].fail_qty = fail;
+    }
+
+    // 掃描功能：定位到對應卡片
+    function scrollToMaterial(code) {
+        const card = document.querySelector(`.material-card[data-code="${escapeHtml(code)}"]`);
+        if (card) {
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            card.classList.add('highlight');
+            setTimeout(() => card.classList.remove('highlight'), 1500);
+            // 將焦點移至該卡片的良品輸入框
+            const passInput = card.querySelector('.pass-qty');
+            if (passInput) passInput.focus();
+        } else {
+            alert(`找不到料號: ${code}`);
+        }
+    }
+
+    // 相機掃描
+    async function startCamera() {
+        if (activeScanner) {
+            try { await activeScanner.stop(); } catch(e) {}
+            activeScanner = null;
+        }
+        const readerDiv = document.getElementById('reader');
+        readerDiv.classList.remove('hidden');
+        readerDiv.innerHTML = '<div id="qr-reader" style="width:100%; height:300px;"></div><button id="closeCameraBtn" class="mt-2 bg-gray-500 text-white px-4 py-2 rounded">關閉相機</button>';
+        const qrReader = new Html5Qrcode("qr-reader");
+        activeScanner = qrReader;
+        try {
+            await qrReader.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } },
+                (decodedText) => {
+                    qrReader.stop().catch(console.warn);
+                    readerDiv.classList.add('hidden');
+                    activeScanner = null;
+                    document.getElementById('scanMaterialCode').value = decodedText;
+                    scrollToMaterial(decodedText);
+                },
+                () => {}
+            );
+            document.getElementById('closeCameraBtn').onclick = () => {
+                qrReader.stop().catch(console.warn);
+                readerDiv.classList.add('hidden');
+                activeScanner = null;
+            };
+        } catch(e) {
+            alert('無法啟動相機: ' + e.message);
+            readerDiv.classList.add('hidden');
+            activeScanner = null;
+        }
+    }
+
+    // 提交檢驗
+    async function submitInspection() {
+        if (!currentDocNumber) {
+            alert('請先選擇待驗單據');
+            return;
+        }
+        const itemsToSubmit = currentItems.map(item => ({
+            material_code: item.material_code,
+            pass_qty: item.pass_qty,
+            fail_qty: item.fail_qty
+        }));
+        if (itemsToSubmit.length === 0) {
+            alert('無檢驗項目');
+            return;
+        }
+        const operator = localStorage.getItem('username') || 'qc';
+        try {
+            const res = await fetch(`${API_BASE}/quality/${currentDocNumber}/inspect`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ operator, items: itemsToSubmit })
+            });
+            if (res.ok) {
+                alert('檢驗完成，單據已轉為檢驗完成');
+                // 重新載入待驗單據列表並清空當前內容
+                await loadPendingDocs();
+                document.getElementById('pendingDocSelect').value = '';
+                currentDocNumber = '';
+                currentItems = [];
+                document.getElementById('itemsContainer').innerHTML = '<div class="text-center py-8 text-gray-500">檢驗完成，可選擇下一筆</div>';
+                document.getElementById('submitMsg').innerHTML = '<span class="text-green-600">✅ 提交成功</span>';
+                setTimeout(() => document.getElementById('submitMsg').innerHTML = '', 3000);
+            } else {
+                const err = await res.json();
+                alert(`檢驗失敗: ${err.detail}`);
+            }
+        } catch(e) { alert(`請求錯誤: ${e.message}`); }
+    }
+
+    // 事件綁定
+    document.getElementById('menuBtn').onclick = () => {
+        document.getElementById('menuPanel').classList.add('open');
+        document.getElementById('menuOverlay').classList.add('show');
+    };
+    window.closeMenu = function() {
+        document.getElementById('menuPanel').classList.remove('open');
+        document.getElementById('menuOverlay').classList.remove('show');
+    };
+    document.getElementById('refreshDocsBtn').onclick = () => {
+        loadPendingDocs();
+    };
+    document.getElementById('pendingDocSelect').onchange = async (e) => {
+        currentDocNumber = e.target.value;
+        if (currentDocNumber) {
+            await loadDocDetails(currentDocNumber);
+        } else {
+            currentItems = [];
+            document.getElementById('itemsContainer').innerHTML = '<div class="text-center py-8 text-gray-500">請選擇待驗單據</div>';
+        }
+    };
+    document.getElementById('scanBtn').onclick = () => {
+        startCamera();
+    };
+    document.getElementById('submitInspectBtn').onclick = submitInspection;
+    // 手動輸入料號定位（按 Enter 觸發）
+    document.getElementById('scanMaterialCode').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const code = e.target.value.trim();
+            if (code) scrollToMaterial(code);
+        }
+    });
+
+    // 初始載入
+    loadPendingDocs();
+    window.logout = () => { localStorage.clear(); location.href = 'login.html'; };
 </script>
 </body>
 </html>
