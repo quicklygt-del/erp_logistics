@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>檢貨任務管理（主管）</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 表格样式：固定布局 + 边框 + 列宽比例 */
+        .data-table {
+            table-layout: fixed;
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .data-table th, .data-table td {
+            border: 1px solid #e5e7eb;
+            padding: 0.5rem;
+            text-align: left;
+            vertical-align: top;
+            word-break: break-word;
+        }
+        .data-table th {
+            background-color: #f9fafb;
+            font-weight: 600;
+        }
+        /* 制令单列表列宽（6列） */
+        .tasks-table th:nth-child(1) { width: 18%; }  /* 單號 */
+        .tasks-table th:nth-child(2) { width: 12%; }  /* 檢貨狀態 */
+        .tasks-table th:nth-child(3) { width: 15%; }  /* 指派檢貨員 */
+        .tasks-table th:nth-child(4) { width: 10%; }  /* 總需求數 */
+        .tasks-table th:nth-child(5) { width: 10%; }  /* 總已發數 */
+        .tasks-table th:nth-child(6) { width: 20%; }  /* 操作 */
+    </style>
+</head>
+<body class="bg-gray-100 p-6">
+<div class="max-w-7xl mx-auto">
+    <div class="flex justify-between items-center mb-4">
+        <h1 class="text-3xl font-bold">📋 檢貨任務管理（主管）</h1>
+        <button onclick="location.href='command_center.html'" class="bg-gray-500 text-white px-3 py-1 rounded">← 返回指揮塔</button>
+    </div>
+
+    <!-- 上傳檢貨單 -->
+    <div class="bg-white rounded shadow p-4 mb-6">
+        <h2 class="text-xl font-bold mb-3">➕ 上傳檢貨單</h2>
+        <div class="flex flex-wrap gap-3 items-end">
+            <div class="flex-1">
+                <label class="block text-sm font-medium">單號</label>
+                <input type="text" id="docNumber" placeholder="例如 M2026060306" class="border p-2 rounded w-full">
+            </div>
+            <div class="flex-1">
+                <label class="block text-sm font-medium">上傳 Excel（料號、數量）</label>
+                <input type="file" id="excelFile" accept=".xlsx,.xls" class="border p-1">
+            </div>
+            <button id="uploadBtn" class="bg-blue-600 text-white px-4 py-2 rounded">上傳並覆蓋</button>
+        </div>
+        <div id="uploadMsg" class="text-sm mt-2"></div>
+    </div>
+
+    <!-- 製令單列表 -->
+    <div class="bg-white rounded shadow p-4">
+        <div class="flex justify-between items-center mb-3 flex-wrap gap-2">
+            <h2 class="text-xl font-bold">📋 製令單列表</h2>
+            <div class="flex items-center gap-3">
+                <label class="flex items-center gap-1 text-sm">
+                    <input type="checkbox" id="showCompletedCheckbox">
+                    <span>顯示已完成 (最近7天)</span>
+                </label>
+                <button id="refreshBtn" class="bg-gray-600 text-white px-3 py-1 rounded">重新整理</button>
+            </div>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="data-table tasks-table">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th>單號</th>
+                        <th>檢貨狀態</th>
+                        <th>指派檢貨員</th>
+                        <th>總需求數</th>
+                        <th>總已發數</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="tasksTbody">
+                    <tr><td colspan="6" class="text-center py-4">載入中...</tbody>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 指派檢貨員模態框 -->
+    <div id="assignPickerModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="bg-white rounded-xl p-6 w-96">
+            <h3 class="text-lg font-bold mb-3">指派檢貨員</h3>
+            <label class="block text-sm font-medium">檢貨員</label>
+            <select id="pickerSelect" class="border p-2 rounded w-full mb-4">
+                <option value="">-- 請選擇 --</option>
+            </select>
+            <div class="flex justify-end gap-2">
+                <button id="cancelPickerBtn" class="bg-gray-300 px-3 py-1 rounded">取消</button>
+                <button id="confirmPickerBtn" class="bg-blue-600 text-white px-3 py-1 rounded">確認指派</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const API_BASE = "/api/v1";
+    let token = localStorage.getItem('access_token');
+    if (!token) { alert('請先登入'); location.href = 'login.html'; }
+
+    let currentPickerDocNumber = null;
+
+    async function apiFetch(url, opts = {}) {
+        opts.headers = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            ...(opts.headers || {})
+        };
+        const res = await fetch(url, opts);
+        if (res.status === 401) { alert('登入過期'); localStorage.removeItem('access_token'); location.href = 'login.html'; throw new Error('Unauthorized'); }
+        if (!res.ok) {
+            const text = await res.text();
+            throw new Error(`${url} 回應錯誤 (${res.status}): ${text.substring(0, 200)}`);
+        }
+        return res.json();
+    }
+
+    function escapeHtml(s) { if (!s) return ''; return s.replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m])); }
+
+    async function loadTasks() {
+        const tbody = document.getElementById('tasksTbody');
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4">載入中...</tbody>';
+        try {
+            const allDocs = await apiFetch(`${API_BASE}/documents/`);
+            const manuDocs = allDocs.filter(d => d.doc_type === 'manufacture');
+            if (!manuDocs.length) {
+                tbody.innerHTML = '<td><td colspan="6" class="text-center">無製令單</tbody>';
+                return;
+            }
+
+            const showCompleted = document.getElementById('showCompletedCheckbox').checked;
+            const now = new Date();
+            const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+            let filteredDocs = manuDocs.filter(doc => {
+                if (doc.picking_status === '已完成') {
+                    if (!showCompleted) return false;
+                    const completedDate = new Date(doc.updated_at);
+                    return completedDate >= sevenDaysAgo;
+                }
+                return true;
+            });
+
+            filteredDocs.sort((a,b) => {
+                if (a.picking_status === '已完成' && b.picking_status !== '已完成') return 1;
+                if (a.picking_status !== '已完成' && b.picking_status === '已完成') return -1;
+                return new Date(b.created_at) - new Date(a.created_at);
+            });
+
+            let rowsHtml = '';
+            for (const doc of filteredDocs) {
+                let totalReq = 0, totalIssued = 0;
+                try {
+                    const detailData = await apiFetch(`${API_BASE}/documents/${doc.doc_number}/details`);
+                    const details = detailData.details || [];
+                    totalReq = details.reduce((sum, d) => sum + (d.required_qty || 0), 0);
+                    totalIssued = details.reduce((sum, d) => sum + (d.issued_qty || 0), 0);
+                } catch(e) { console.error(`載入明細失敗 ${doc.doc_number}:`, e); }
+
+                // 过滤掉总需求数为0的单据
+                if (totalReq === 0) continue;
+
+                const statusMap = {
+                    '待指派': '待指派', '待检货': '待檢貨', '待檢貨': '待檢貨',
+                    '进行中': '進行中', '進行中': '進行中', '已完成': '已完成'
+                };
+                const statusTW = statusMap[doc.picking_status] || doc.picking_status;
+                const canAssign = ['待指派', '待检货', '待檢貨', '进行中', '進行中'].includes(doc.picking_status);
+                rowsHtml += `
+                    <tr>
+                        <td class="p-2"><a href="#" class="text-blue-600" onclick="viewDetails('${doc.doc_number}'); return false;">${escapeHtml(doc.doc_number)}</a></td>
+                        <td class="p-2">${statusTW}</td>
+                        <td class="p-2">${escapeHtml(doc.assigned_picker ? (doc.assigned_picker_name || doc.assigned_picker) : '未指派')}</td>
+                        <td class="p-2 text-right">${totalReq}</td>
+                        <td class="p-2 text-right">${totalIssued}</td>
+                        <td class="p-2">
+                            ${canAssign ? `
+                                <button class="assign-btn bg-yellow-500 text-white px-2 py-1 rounded text-xs" data-doc="${doc.doc_number}">${doc.assigned_picker ? '重新指派' : '指派'}</button>
+                                <button class="delete-btn bg-red-500 text-white px-2 py-1 rounded text-xs ml-1" data-doc="${doc.doc_number}">刪除檢貨單</button>
+                            ` : '<span class="text-gray-400">不可操作</span>'}
+                        </td>
+                    </tr>
+                `;
+            }
+            tbody.innerHTML = rowsHtml || '<tr><td colspan="6" class="text-center">無符合條件的製令單</tbody>';
+
+            document.querySelectorAll('.assign-btn').forEach(btn => {
+                btn.onclick = async (e) => {
+                    e.stopPropagation();
+                    currentPickerDocNumber = btn.dataset.doc;
+                    await loadPickers();
+                    document.getElementById('assignPickerModal').classList.remove('hidden');
+                };
+            });
+            document.querySelectorAll('.delete-btn').forEach(btn => {
+                btn.onclick = async (e) => {
+                    e.stopPropagation();
+                    const doc = btn.dataset.doc;
+                    if (confirm(`確定刪除單據 ${doc} 的檢貨單（將清空所有明細）？`)) {
+                        try {
+                            await apiFetch(`${API_BASE}/documents/${doc}/pick-list?operator=admin`, { method: 'DELETE' });
+                            alert('刪除成功');
+                            loadTasks();
+                        } catch(e) { alert(`刪除失敗: ${e.message}`); }
+                    }
+                };
+            });
+        } catch(e) {
+            console.error(e);
+            tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-red-500">載入失敗: ${e.message}</tbody>`;
+        }
+    }
+
+    async function loadPickers() {
+        try {
+            const pickers = await apiFetch(`${API_BASE}/admin/users/by-role/operator`);
+            const select = document.getElementById('pickerSelect');
+            select.innerHTML = '<option value="">-- 請選擇 --</option>';
+            pickers.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.username;
+                opt.textContent = p.full_name ? `${p.full_name} (${p.username})` : p.username;
+                select.appendChild(opt);
+            });
+        } catch(e) {
+            console.error('載入檢貨員失敗', e);
+            const select = document.getElementById('pickerSelect');
+            select.innerHTML = '<option value="">-- 請選擇 --</option>';
+            const fallback = ['picker001', 'zhangsan', 'lidatong', 'wangtian'];
+            fallback.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p;
+                opt.textContent = p;
+                select.appendChild(opt);
+            });
+        }
+    }
+
+    window.viewDetails = async function(docNumber) {
+        try {
+            const data = await apiFetch(`${API_BASE}/documents/${docNumber}/details`);
+            let msg = `單據 ${docNumber} 明細:\n`;
+            data.details.forEach(d => {
+                msg += `${d.material_code} ${d.material_name || ''} 需求:${d.required_qty} 已發:${d.issued_qty}\n`;
+            });
+            alert(msg);
+        } catch(e) { alert('無法載入明細: ' + e.message); }
+    };
+
+    document.getElementById('uploadBtn').onclick = async () => {
+        const docNumber = document.getElementById('docNumber').value.trim();
+        if (!docNumber) { alert('請輸入單號'); return; }
+        const file = document.getElementById('excelFile').files[0];
+        if (!file) { alert('請選擇 Excel 檔案'); return; }
+        const formData = new FormData();
+        formData.append('file', file);
+        try {
+            const res = await fetch(`${API_BASE}/documents/${docNumber}/pick-from-excel?operator=admin`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: formData
+            });
+            const result = await res.json();
+            if (res.ok) {
+                document.getElementById('uploadMsg').innerHTML = `<span class="text-green-600">✅ 上傳成功，共 ${result.items.length} 項</span>`;
+                loadTasks();
+                document.getElementById('docNumber').value = '';
+                document.getElementById('excelFile').value = '';
+            } else {
+                document.getElementById('uploadMsg').innerHTML = `<span class="text-red-600">❌ 失敗: ${result.detail}</span>`;
+            }
+        } catch(e) { alert(`錯誤: ${e.message}`); }
+    };
+
+    document.getElementById('refreshBtn').onclick = loadTasks;
+    document.getElementById('showCompletedCheckbox').onchange = loadTasks;
+
+    // 確認指派按鈕事件（修正）
+    document.getElementById('confirmPickerBtn').onclick = async () => {
+        const assignedTo = document.getElementById('pickerSelect').value;
+        if (!assignedTo) {
+            alert('請選擇檢貨員');
+            return;
+        }
+        if (!currentPickerDocNumber) {
+            alert('未選定製令單');
+            return;
+        }
+        try {
+            await apiFetch(`${API_BASE}/documents/${currentPickerDocNumber}/assign-picker?assigned_to=${assignedTo}`, { method: 'PATCH' });
+            alert('指派成功');
+            document.getElementById('assignPickerModal').classList.add('hidden');
+            loadTasks(); // 刷新列表
+        } catch(e) {
+            alert(`指派失敗: ${e.message}`);
+        }
+    };
+
+    document.getElementById('cancelPickerBtn').onclick = () => {
+        document.getElementById('assignPickerModal').classList.add('hidden');
+        currentPickerDocNumber = null;
+    };
+
+    loadTasks();
+</script>
+</body>
+</html>

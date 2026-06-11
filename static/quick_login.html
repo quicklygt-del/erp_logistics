@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>快速登入中...</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center h-screen">
+<div class="bg-white p-8 rounded-xl shadow-lg text-center">
+    <div class="text-3xl mb-4">🔐</div>
+    <h1 class="text-xl font-bold mb-2">快速登入中</h1>
+    <p id="message" class="text-gray-600">請稍候...</p>
+    <div id="spinner" class="mt-4">
+        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+    </div>
+</div>
+
+<script>
+    const API_BASE = "/api/v1";
+
+    async function quickLogin() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('token');
+        const messageDiv = document.getElementById('message');
+        const spinner = document.getElementById('spinner');
+
+        if (!token) {
+            messageDiv.innerText = '無效的登入連結，缺少 token。';
+            spinner.style.display = 'none';
+            return;
+        }
+
+        try {
+            const res = await fetch(`${API_BASE}/auth/quick-login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: token })
+            });
+
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.detail || '登入失敗');
+            }
+
+            const data = await res.json();
+            localStorage.setItem('access_token', data.access_token);
+
+            const meRes = await fetch(`${API_BASE}/auth/users/me`, {
+                headers: { 'Authorization': `Bearer ${data.access_token}` }
+            });
+            if (!meRes.ok) throw new Error('無法獲取用戶信息');
+            const me = await meRes.json();
+            localStorage.setItem('user_role', me.role);
+            localStorage.setItem('username', me.username);
+
+            let redirectUrl = '';
+            switch (me.role) {
+                case 'receiver': redirectUrl = 'receiver_dashboard.html'; break;
+                case 'qc': redirectUrl = 'qc_dashboard.html'; break;
+                case 'packer': redirectUrl = 'packing_dashboard.html'; break;
+                case 'warehouse': redirectUrl = 'command_center.html'; break;
+                case 'admin': redirectUrl = 'admin_dashboard.html'; break;
+                case 'operator': redirectUrl = 'worker_dashboard.html'; break;
+                default: redirectUrl = 'command_center.html';
+            }
+            window.location.href = redirectUrl;
+        } catch (e) {
+            messageDiv.innerText = '登入失敗: ' + e.message;
+            spinner.style.display = 'none';
+        }
+    }
+
+    quickLogin();
+</script>
+</body>
+</html>

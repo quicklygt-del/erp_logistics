@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>QR 標籤生產器</title>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    <style>
+        * { box-sizing: border-box; font-family: system-ui, 'Segoe UI', sans-serif; }
+        body { background: #eef2f7; margin: 0; padding: 20px; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        .card { background: white; border-radius: 28px; padding: 24px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+        h1 { margin-top: 0; font-size: 1.8rem; }
+        .tabs { display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid #e2edf2; }
+        .tab { padding: 10px 20px; background: #e2e8f0; border-radius: 30px 30px 0 0; cursor: pointer; font-weight: 600; }
+        .tab.active { background: #2c7da0; color: white; }
+        .tab-pane { display: none; }
+        .tab-pane.active { display: block; }
+        label { font-weight: 600; display: block; margin-top: 12px; margin-bottom: 4px; }
+        input, select, textarea { width: 100%; padding: 10px; border-radius: 30px; border: 1px solid #cbd5e1; margin-bottom: 8px; }
+        button { background: #2c7da0; color: white; border: none; padding: 10px 20px; border-radius: 40px; font-weight: 600; cursor: pointer; margin-top: 8px; }
+        button.secondary { background: #6c8e9e; }
+        .preview { text-align: center; margin: 20px 0; padding: 15px; background: #f8fafc; border-radius: 20px; }
+        .flex-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+        .error { color: #b91c1c; background: #ffe6e5; padding: 8px; border-radius: 16px; margin-top: 8px; }
+        .success { color: #2b6e3c; background: #e6f7e6; padding: 8px; border-radius: 16px; margin-top: 8px; }
+        .batch-preview { max-height: 300px; overflow-y: auto; margin-top: 16px; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+        th, td { border: 1px solid #e2edf2; padding: 8px; text-align: left; }
+        th { background: #f1f5f9; }
+        .input-area { margin-top: 12px; }
+        .length-warning { font-size: 0.75rem; color: #d97706; margin-top: -4px; margin-bottom: 8px; }
+        .header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header-bar">
+        <div class="flex items-center gap-3">
+            <button onclick="history.back()" class="bg-gray-500 text-white px-3 py-1 rounded text-sm">← 返回</button>
+            <h1>📦 QR 標籤生產器</h1>
+        </div>
+    </div>
+    <div class="card">
+        <div class="tabs">
+            <div class="tab active" data-tab="single">單筆列印</div>
+            <div class="tab" data-tab="batch">批次上傳 (Excel)</div>
+        </div>
+
+        <!-- 單筆列印頁籤 -->
+        <div id="singlePane" class="tab-pane active">
+            <div class="flex-row">
+                <div style="flex:2">
+                    <label>列印類型</label>
+                    <select id="printType">
+                        <option value="material">物料 (料號)</option>
+                        <option value="box">包裝箱號</option>
+                        <option value="defect">不良品標籤</option>
+                        <option value="custom">自訂內容</option>
+                    </select>
+                </div>
+                <div style="flex:1">
+                    <label>標籤尺寸</label>
+                    <select id="labelSize">
+                        <option value="small">小 (30x30mm)</option>
+                        <option value="medium" selected>中 (50x50mm)</option>
+                        <option value="large">大 (70x70mm)</option>
+                        <option value="xlarge">特大 (100x100mm)</option>
+                    </select>
+                </div>
+                <div style="flex:1">
+                    <label>列印份數</label>
+                    <input type="number" id="printCopies" value="2" min="1" max="20">
+                </div>
+            </div>
+
+            <!-- 物料輸入區 -->
+            <div id="materialInput" class="input-area">
+                <label>料號</label>
+                <input type="text" id="materialCode" placeholder="請輸入料號 (例如 Carb-A01)">
+                <div id="materialInfo" class="text-sm text-gray-500"></div>
+            </div>
+
+            <!-- 箱號輸入區 (QR 只含箱號) -->
+            <div id="boxInput" class="input-area" style="display:none;">
+                <label>箱號</label>
+                <input type="text" id="boxNumber" placeholder="例如 M2026060306-01">
+                <div id="boxDetails" class="text-sm text-gray-500 mt-1"></div>
+            </div>
+
+            <!-- 不良品輸入區 (QR 含簡短標識) -->
+            <div id="defectInput" class="input-area" style="display:none;">
+                <label>料號</label>
+                <input type="text" id="defectCode" placeholder="不良品料號">
+                <label>不良原因</label>
+                <input type="text" id="defectReason" placeholder="例如 外觀刮傷、尺寸錯誤">
+                <div class="text-xs text-gray-500">QR 碼內容將自動縮短為「不良品-料號-時間戳」，詳細原因請另行記錄。</div>
+            </div>
+
+            <!-- 自訂內容輸入區 (限制長度) -->
+            <div id="customInput" class="input-area" style="display:none;">
+                <label>QR 碼內容 (最多200字元)</label>
+                <textarea id="customText" rows="2" placeholder="請輸入任何文字或網址"></textarea>
+                <div id="customLengthMsg" class="length-warning"></div>
+            </div>
+
+            <div class="preview" id="previewArea">
+                <div id="qrPreview"></div>
+                <p class="text-sm text-gray-500 mt-2">QR 碼預覽</p>
+            </div>
+
+            <button id="singlePrintBtn">🖨️ 列印</button>
+            <div id="singleErrorMsg" class="error" style="display:none;"></div>
+        </div>
+
+        <!-- 批次列印頁籤 (Excel) -->
+        <div id="batchPane" class="tab-pane">
+            <div class="flex-row">
+                <div style="flex:1">
+                    <label>標籤尺寸</label>
+                    <select id="batchLabelSize">
+                        <option value="small">小 (30x30mm)</option>
+                        <option value="medium" selected>中 (50x50mm)</option>
+                        <option value="large">大 (70x70mm)</option>
+                        <option value="xlarge">特大 (100x100mm)</option>
+                    </select>
+                </div>
+                <div style="flex:1">
+                    <label>統一列印份數 (如 Excel 有指定張數欄位則以 Excel 為準)</label>
+                    <input type="number" id="batchDefaultCopies" value="1" min="1" max="20">
+                </div>
+            </div>
+            <div>
+                <label>上傳 Excel 檔案 (包含「料號」欄位，可選「張數」欄位)</label>
+                <input type="file" id="excelFile" accept=".xlsx, .xls">
+                <button id="uploadExcelBtn" class="secondary">📂 上傳並預覽</button>
+            </div>
+            <div id="batchPreviewArea" class="batch-preview" style="display:none;">
+                <h3>待列印清單</h3>
+                <div id="batchList"></div>
+                <button id="batchPrintBtn">🖨️ 批次列印</button>
+            </div>
+            <div id="batchErrorMsg" class="error" style="display:none;"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const API_BASE = "/api/v1";
+    let currentSingleQRCode = null;
+    let currentBatchItems = [];
+
+    function escapeHtml(s) { if (!s) return ''; return s.replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m])); }
+    function showError(area, msg) {
+        const div = document.getElementById(area);
+        div.textContent = msg;
+        div.style.display = 'block';
+        setTimeout(() => div.style.display = 'none', 4000);
+    }
+
+    function getSizeStyle(size) {
+        switch(size) {
+            case 'small': return 'width:30mm; height:30mm;';
+            case 'medium': return 'width:50mm; height:50mm;';
+            case 'large': return 'width:70mm; height:70mm;';
+            case 'xlarge': return 'width:100mm; height:100mm;';
+            default: return 'width:50mm; height:50mm;';
+        }
+    }
+
+    async function generateQRText(containerId, text, width=180, height=180) {
+        const container = document.getElementById(containerId);
+        container.innerHTML = '';
+        if (!text) {
+            container.innerHTML = '<div class="text-gray-400">請輸入內容</div>';
+            return null;
+        }
+        if (text.length > 400) {
+            container.innerHTML = '<div class="text-red-500">❌ 內容過長，請縮短至400字元以內</div>';
+            return null;
+        }
+        return new Promise((resolve) => {
+            try {
+                const qr = new QRCode(container, {
+                    text: text,
+                    width: width,
+                    height: height
+                });
+                setTimeout(() => {
+                    const img = container.querySelector('img');
+                    if (img) resolve(img.src);
+                    else resolve(null);
+                }, 200);
+            } catch(e) {
+                container.innerHTML = `<div class="text-red-500">QR 生成失敗: ${e.message}</div>`;
+                resolve(null);
+            }
+        });
+    }
+
+    function generateDefectId(code, reason) {
+        const now = new Date();
+        const timestamp = now.toISOString().slice(0,19).replace(/[-:T]/g, '').slice(0,14);
+        return `DEFECT-${code}-${timestamp}`;
+    }
+
+    async function updateSinglePreview() {
+        const type = document.getElementById('printType').value;
+        let qrText = '';
+        if (type === 'material') {
+            const code = document.getElementById('materialCode').value.trim();
+            if (!code) { qrText = ''; }
+            else {
+                try {
+                    const res = await fetch(`${API_BASE}/materials/${encodeURIComponent(code)}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        document.getElementById('materialInfo').innerHTML = `<span class="success">✅ ${data.name} (${data.spec || ''}) 庫存: ${data.stock_qty}</span>`;
+                        qrText = code;
+                    } else {
+                        document.getElementById('materialInfo').innerHTML = `<span class="error">❌ 料號不存在，請先在主儲倉建檔</span>`;
+                        qrText = '';
+                    }
+                } catch(e) {
+                    document.getElementById('materialInfo').innerHTML = `<span class="error">❌ 無法驗證料號</span>`;
+                    qrText = '';
+                }
+            }
+        } else if (type === 'box') {
+            const boxNumber = document.getElementById('boxNumber').value.trim();
+            if (boxNumber) {
+                qrText = boxNumber;
+                document.getElementById('boxDetails').innerHTML = `<span class="success">📦 將印製箱號: ${boxNumber}</span>`;
+            } else {
+                qrText = '';
+                document.getElementById('boxDetails').innerHTML = '';
+            }
+        } else if (type === 'defect') {
+            const code = document.getElementById('defectCode').value.trim();
+            const reason = document.getElementById('defectReason').value.trim();
+            if (code || reason) {
+                qrText = generateDefectId(code || 'unknown', reason);
+            } else {
+                qrText = '';
+            }
+        } else if (type === 'custom') {
+            qrText = document.getElementById('customText').value;
+            const len = qrText.length;
+            const msgDiv = document.getElementById('customLengthMsg');
+            if (len > 200) {
+                msgDiv.innerHTML = `⚠️ 內容過長 (${len}/200)，將無法生成QR碼`;
+                msgDiv.classList.add('error');
+            } else {
+                msgDiv.innerHTML = `${len}/200 字元`;
+                msgDiv.classList.remove('error');
+            }
+            if (len > 200) qrText = '';
+        }
+        if (qrText) {
+            await generateQRText('qrPreview', qrText, 180, 180);
+            currentSingleQRCode = qrText;
+        } else {
+            document.getElementById('qrPreview').innerHTML = '<div class="text-gray-400">請輸入內容</div>';
+            currentSingleQRCode = null;
+        }
+    }
+
+    async function singlePrint() {
+        const type = document.getElementById('printType').value;
+        let qrText = '';
+        if (type === 'material') {
+            const code = document.getElementById('materialCode').value.trim();
+            if (!code) { showError('singleErrorMsg', '請輸入料號'); return; }
+            try {
+                const res = await fetch(`${API_BASE}/materials/${encodeURIComponent(code)}`);
+                if (!res.ok) throw new Error('物料不存在');
+                qrText = code;
+            } catch(e) {
+                showError('singleErrorMsg', '料號不存在，無法列印');
+                return;
+            }
+        } else if (type === 'box') {
+            const boxNumber = document.getElementById('boxNumber').value.trim();
+            if (!boxNumber) { showError('singleErrorMsg', '請輸入箱號'); return; }
+            qrText = boxNumber;
+        } else if (type === 'defect') {
+            const code = document.getElementById('defectCode').value.trim();
+            const reason = document.getElementById('defectReason').value.trim();
+            if (!code && !reason) { showError('singleErrorMsg', '請輸入料號或不良原因'); return; }
+            qrText = generateDefectId(code || 'unknown', reason);
+        } else if (type === 'custom') {
+            qrText = document.getElementById('customText').value;
+            if (!qrText) { showError('singleErrorMsg', '請輸入自訂內容'); return; }
+            if (qrText.length > 200) { showError('singleErrorMsg', '內容超過200字元，無法列印'); return; }
+        }
+        if (!qrText) return;
+        const copies = parseInt(document.getElementById('printCopies').value) || 1;
+        const size = document.getElementById('labelSize').value;
+        const sizeStyle = getSizeStyle(size);
+        let imgSrc = null;
+        const qrImg = document.querySelector('#qrPreview img');
+        if (qrImg && qrImg.src) imgSrc = qrImg.src;
+        if (!imgSrc) {
+            const canvas = document.createElement('canvas');
+            new QRCode(canvas, { text: qrText, width: 200, height: 200 });
+            await new Promise(r => setTimeout(r, 200));
+            imgSrc = canvas.toDataURL();
+        }
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(`
+            <html><head><title>列印 QR 標籤</title>
+            <style>
+                @page { margin: 0; }
+                body { margin: 0; padding: 0; text-align: center; }
+                .qr-page { page-break-after: always; display: flex; justify-content: center; align-items: center; height: 100vh; }
+                .qr-img { ${sizeStyle} }
+            </style>
+            </head>
+            <body>
+                ${Array(copies).fill(0).map(() => `<div class="qr-page"><img class="qr-img" src="${imgSrc}"></div>`).join('')}
+            </body>
+            </html>
+        `);
+        printWindow.document.close();
+        printWindow.print();
+    }
+
+    document.getElementById('uploadExcelBtn').onclick = async () => {
+        const file = document.getElementById('excelFile').files[0];
+        if (!file) { alert('請選擇 Excel 檔案'); return; }
+        const reader = new FileReader();
+        reader.onload = async function(e) {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(sheet);
+            if (!rows.length) { alert('Excel 無資料'); return; }
+            const items = [];
+            for (let row of rows) {
+                let materialCode = row['料號'] || row['料号'];
+                if (!materialCode) continue;
+                materialCode = String(materialCode).trim();
+                let copies = row['張數'] || row['数量'];
+                if (copies === undefined) copies = document.getElementById('batchDefaultCopies').value;
+                else copies = parseInt(copies) || 1;
+                items.push({ materialCode, copies });
+            }
+            if (!items.length) { alert('沒有有效的料號'); return; }
+            const validItems = [];
+            for (let it of items) {
+                try {
+                    const res = await fetch(`${API_BASE}/materials/${encodeURIComponent(it.materialCode)}`);
+                    if (!res.ok) throw new Error();
+                    validItems.push({ content: it.materialCode, copies: it.copies });
+                } catch(e) {
+                    alert(`料號 ${it.materialCode} 不存在，已跳過`);
+                }
+            }
+            if (!validItems.length) { alert('沒有有效的物料'); return; }
+            currentBatchItems = validItems;
+            const previewDiv = document.getElementById('batchList');
+            previewDiv.innerHTML = `
+                <table class="min-w-full border">
+                    <thead><tr><th>料號</th><th>張數</th></tr></thead>
+                    <tbody>${validItems.map(item => `<tr><td>${escapeHtml(item.content)}</td><td>${item.copies}</td></tr>`).join('')}</tbody>
+                  </table>
+            `;
+            document.getElementById('batchPreviewArea').style.display = 'block';
+        };
+        reader.readAsArrayBuffer(file);
+    };
+
+    async function batchPrint() {
+        if (!currentBatchItems.length) { alert('無待列印項目'); return; }
+        const size = document.getElementById('batchLabelSize').value;
+        const sizeStyle = getSizeStyle(size);
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(`
+            <html><head><title>批次列印 QR 標籤</title>
+            <style>
+                @page { margin: 0; }
+                body { margin: 0; padding: 0; text-align: center; }
+                .qr-page { page-break-after: always; display: flex; justify-content: center; align-items: center; height: 100vh; }
+                .qr-img { ${sizeStyle} }
+            </style>
+            </head>
+            <body id="printBody"></body>
+            </html>
+        `);
+        const body = printWindow.document.getElementById('printBody');
+        for (let item of currentBatchItems) {
+            const canvas = document.createElement('canvas');
+            new QRCode(canvas, { text: item.content, width: 200, height: 200 });
+            await new Promise(r => setTimeout(r, 200));
+            const imgSrc = canvas.toDataURL();
+            for (let i = 0; i < item.copies; i++) {
+                const div = printWindow.document.createElement('div');
+                div.className = 'qr-page';
+                const img = printWindow.document.createElement('img');
+                img.className = 'qr-img';
+                img.src = imgSrc;
+                div.appendChild(img);
+                body.appendChild(div);
+            }
+        }
+        printWindow.document.close();
+        printWindow.print();
+    }
+
+    document.getElementById('printType').addEventListener('change', () => {
+        const type = document.getElementById('printType').value;
+        document.getElementById('materialInput').style.display = type === 'material' ? 'block' : 'none';
+        document.getElementById('boxInput').style.display = type === 'box' ? 'block' : 'none';
+        document.getElementById('defectInput').style.display = type === 'defect' ? 'block' : 'none';
+        document.getElementById('customInput').style.display = type === 'custom' ? 'block' : 'none';
+        updateSinglePreview();
+    });
+    document.getElementById('materialCode').addEventListener('input', updateSinglePreview);
+    document.getElementById('boxNumber').addEventListener('input', updateSinglePreview);
+    document.getElementById('defectCode').addEventListener('input', updateSinglePreview);
+    document.getElementById('defectReason').addEventListener('input', updateSinglePreview);
+    document.getElementById('customText').addEventListener('input', updateSinglePreview);
+    document.getElementById('singlePrintBtn').onclick = singlePrint;
+    document.getElementById('batchPrintBtn').onclick = batchPrint;
+
+    document.querySelectorAll('.tab').forEach(tab => {
+        tab.onclick = () => {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            const target = tab.dataset.tab;
+            document.getElementById('singlePane').style.display = target === 'single' ? 'block' : 'none';
+            document.getElementById('batchPane').style.display = target === 'batch' ? 'block' : 'none';
+        };
+    });
+
+    updateSinglePreview();
+</script>
+</body>
+</html>

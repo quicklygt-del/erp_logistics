@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>包裝工作台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+</head>
+<body class="bg-gray-100">
+<div class="container mx-auto px-4 py-6 max-w-7xl">
+    <div class="flex justify-between items-center mb-4">
+        <h1 class="text-2xl font-bold">📦 包裝工作台</h1>
+        <div class="space-x-2">
+            <a href="stock_query.html" class="bg-blue-500 text-white px-3 py-1 rounded text-sm">庫存查詢</a>
+            <a href="history.html" class="bg-blue-500 text-white px-3 py-1 rounded text-sm">歷史紀錄</a>
+            <a href="reprint_qr.html" class="bg-blue-500 text-white px-3 py-1 rounded text-sm">QR列印</a>
+            <button onclick="logout()" class="bg-red-500 text-white px-3 py-1 rounded text-sm">登出</button>
+        </div>
+    </div>
+
+    <!-- 包裝分箱面板 -->
+    <div id="packPanel" style="display:block;">
+        <div class="bg-white rounded-xl shadow p-5">
+            <h2 class="text-xl font-bold mb-4">📦 包裝分箱</h2>
+            <div class="mb-4">
+                <label class="block text-sm font-medium">選擇製令單</label>
+                <select id="packDocSelect" class="w-full border rounded p-2"><option value="">-- 請選擇 --</option></select>
+                <button id="refreshPackDocsBtn" class="bg-blue-600 text-white px-3 py-1 rounded mt-2">重新整理待包裝單據</button>
+            </div>
+            <div id="packCurrentDocInfo" class="bg-gray-50 p-2 rounded mb-3 hidden"></div>
+            <div id="packMaterialsList" class="mb-4 border rounded p-2 max-h-48 overflow-auto"><div class="text-gray-400 text-sm">請先選擇製令單，將顯示待包裝物料</div></div>
+            <div class="flex gap-2 mb-3">
+                <input type="text" id="packMaterialCode" placeholder="掃描或輸入料號" class="border flex-1 p-2">
+                <input type="number" id="packQty" placeholder="數量" value="1" class="border w-24 p-2" onfocus="this.select()">
+                <button id="addToCurrentBoxBtn" class="bg-blue-600 text-white px-3 py-2 rounded">➕ 加入目前箱子</button>
+                <button id="scanPackMaterialBtn" class="bg-purple-600 text-white px-3 py-2 rounded">📷 掃描</button>
+            </div>
+            <div id="boxList" class="mb-4 border rounded p-2 max-h-48 overflow-auto"></div>
+            <div id="currentBoxDetails" class="mb-4 border rounded p-2 hidden">
+                <div class="font-semibold mb-2">目前箱子明細</div>
+                <table class="min-w-full border text-sm"><thead class="bg-gray-50"><tr><th>料號</th><th>品名</th><th>規格</th><th>數量</th></tr></thead><tbody id="currentBoxDetailsTbody"></tbody></table>
+            </div>
+            <!-- 按鍵順序調整為：新增空箱 → 封箱 → 移至出貨倉 -->
+            <div class="flex gap-2 flex-wrap">
+                <button id="createNewBoxBtn" class="bg-green-600 text-white px-4 py-2 rounded">➕ 新增空箱</button>
+                <button id="sealCurrentBoxBtn" class="bg-orange-600 text-white px-4 py-2 rounded">📦 封箱</button>
+                <button id="moveToShippingBtn" class="bg-purple-600 text-white px-4 py-2 rounded">🚚 移至出貨倉</button>
+            </div>
+            <div id="packResultMsg" class="text-sm mt-2"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const API_BASE = "/api/v1";
+    let token = localStorage.getItem('access_token');
+    if (!token) { alert('請先登入'); location.href = 'login.html'; }
+
+    async function apiFetch(url, opts = {}) {
+        opts.headers = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            ...(opts.headers || {})
+        };
+        const res = await fetch(url, opts);
+        if (res.status === 401) {
+            alert('登入過期，請重新登入');
+            localStorage.removeItem('access_token');
+            location.href = 'login.html';
+            throw new Error('Unauthorized');
+        }
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+    }
+
+    let currentPackDocNumber = "", currentBoxes = [], currentSelectedBox = null, packMaterials = [];
+
+    async function loadPackDocs() {
+        try {
+            const docs = await apiFetch(`${API_BASE}/documents/ready-to-pack`);
+            const select = document.getElementById('packDocSelect');
+            select.innerHTML = '<option value="">-- 請選擇 --</option>';
+            docs.forEach(d => {
+                const opt = document.createElement('option');
+                opt.value = d.doc_number;
+                opt.textContent = `${d.doc_number} (${d.doc_type})`;
+                select.appendChild(opt);
+            });
+        } catch(e) { console.error(e); }
+    }
+
+    async function loadPackMaterials(docNumber) {
+        try {
+            const detail = await apiFetch(`${API_BASE}/documents/${encodeURIComponent(docNumber)}/details`);
+            const details = detail.details || [];
+            const items = details.filter(d => (d.issued_qty||0) > 0 || (d.required_qty||0) > 0).map(d => ({
+                material_code: d.material_code,
+                material_name: d.material_name || '品名待補',
+                spec: d.spec || '',
+                pending_qty: (d.issued_qty||0) > 0 ? d.issued_qty : (d.required_qty||0)
+            }));
+            const container = document.getElementById('packMaterialsList');
+            if (!items.length) container.innerHTML = '<div class="text-gray-400">⚠️ 無待包裝物料，請確認是否已發料或需求數量為0</div>';
+            else container.innerHTML = items.map(i => `
+                <div class="border-b py-1 flex justify-between">
+                    <span><span class="font-mono">${escapeHtml(i.material_code)}</span> ${escapeHtml(i.material_name)} ${i.spec ? `(${escapeHtml(i.spec)})` : ''}</span>
+                    <span class="text-blue-600">待包裝: ${i.pending_qty}</span>
+                </div>
+            `).join('');
+            packMaterials = items;
+        } catch(e) { console.error(e); }
+    }
+
+    async function loadBoxesForDoc() {
+        if (!currentPackDocNumber) return;
+        try {
+            let boxes = await apiFetch(`${API_BASE}/boxes/?doc_number=${encodeURIComponent(currentPackDocNumber)}`);
+            boxes = boxes.filter(b => b.status === '包裝中' || b.status === '已封箱');
+            currentBoxes = boxes;
+            const container = document.getElementById('boxList');
+            if (!boxes.length) {
+                container.innerHTML = '<div class="text-gray-400">尚無箱子，請先建立新箱</div>';
+                currentSelectedBox = null;
+                return;
+            }
+            container.innerHTML = boxes.map(b => `
+                <div class="border-b p-2 flex justify-between items-center">
+                    <span>${escapeHtml(b.box_number)} (${escapeHtml(b.status)})</span>
+                    <div>
+                        <button class="select-box-btn bg-gray-500 text-white px-2 py-1 rounded text-sm" data-box="${escapeHtml(b.box_number)}">查看明細</button>
+                        ${b.status === '已封箱' ? `<button class="unseal-box-btn bg-yellow-500 text-white px-2 py-1 rounded text-sm" data-box="${escapeHtml(b.box_number)}">解封</button>` : ''}
+                        <button class="print-qr-btn bg-blue-500 text-white px-2 py-1 rounded text-sm" data-box="${escapeHtml(b.box_number)}">🖨️ 列印 QR</button>
+                    </div>
+                </div>
+            `).join('');
+            document.querySelectorAll('.select-box-btn').forEach(btn => btn.onclick = () => selectBox(btn.dataset.box));
+            document.querySelectorAll('.unseal-box-btn').forEach(btn => btn.onclick = async () => {
+                const boxNumber = btn.dataset.box;
+                if (!confirm(`確定解封箱子 ${boxNumber}？`)) return;
+                const op = localStorage.getItem('username') || 'admin';
+                try {
+                    const res = await fetch(`${API_BASE}/documents/boxes/${encodeURIComponent(boxNumber)}/unseal?operator=${encodeURIComponent(op)}`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (res.ok) {
+                        alert('解封成功');
+                        await loadBoxesForDoc();
+                        selectBox(boxNumber);
+                    } else {
+                        const err = await res.json();
+                        alert(`解封失敗: ${err.detail}`);
+                    }
+                } catch(e) { alert(`請求錯誤: ${e.message}`); }
+            });
+            document.querySelectorAll('.print-qr-btn').forEach(btn => {
+                btn.onclick = () => showPrintModal(btn.dataset.box);
+            });
+            if (!currentSelectedBox && boxes.length) {
+                const openBox = boxes.find(b => b.status !== '已封箱');
+                if (openBox) selectBox(openBox.box_number);
+                else selectBox(boxes[0].box_number);
+            }
+        } catch(e) { console.error(e); }
+    }
+
+    async function selectBox(boxNumber) {
+        currentSelectedBox = boxNumber;
+        try {
+            const data = await apiFetch(`${API_BASE}/boxes/${encodeURIComponent(boxNumber)}/details`);
+            document.getElementById('packResultMsg').innerHTML = `<span class="text-green-600">目前箱子：${escapeHtml(boxNumber)}，已裝 ${data.details.length} 種物料</span>`;
+            const detailsDiv = document.getElementById('currentBoxDetails');
+            const tbody = document.getElementById('currentBoxDetailsTbody');
+            if (!data.details.length) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-gray-400">暫無明細</td></tr>';
+            } else {
+                tbody.innerHTML = data.details.map(d => `<tr><td class="p-2">${escapeHtml(d.material_code)}</td><td class="p-2">${escapeHtml(d.material_name)}</td><td class="p-2">${escapeHtml(d.spec || '')}</td><td class="p-2">${d.quantity}</td></tr>`).join('');
+            }
+            detailsDiv.classList.remove('hidden');
+        } catch(e) { console.error(e); }
+    }
+
+    async function createNewBox() {
+        if (!currentPackDocNumber) { alert('請先選擇製令單'); return; }
+        const boxes = await apiFetch(`${API_BASE}/boxes/?doc_number=${encodeURIComponent(currentPackDocNumber)}`);
+        const nextSeq = boxes.length + 1;
+        const newBoxNumber = `${currentPackDocNumber}-${String(nextSeq).padStart(2,'0')}`;
+        const operator = localStorage.getItem('username') || 'admin';
+        try {
+            const res = await fetch(`${API_BASE}/documents/${encodeURIComponent(currentPackDocNumber)}/start-box`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ operator, box_number: newBoxNumber })
+            });
+            if (res.ok) {
+                alert(`新箱子 ${newBoxNumber} 建立成功`);
+                await loadBoxesForDoc();
+                await selectBox(newBoxNumber);
+            } else {
+                const err = await res.json();
+                alert(`建立失敗: ${err.detail}`);
+            }
+        } catch(e) { alert(`請求錯誤: ${e.message}`); }
+    }
+
+    async function addToCurrentBox() {
+        if (!currentPackDocNumber) { alert('請先選擇製令單'); return; }
+        if (!currentSelectedBox) {
+            if (!currentBoxes.length) { alert('尚無箱子，請先新增空箱'); return; }
+            const openBox = currentBoxes.find(b => b.status !== '已封箱');
+            if (!openBox) { alert('沒有可用的未封箱箱子，請新增空箱'); return; }
+            currentSelectedBox = openBox.box_number;
+        }
+        const materialCode = document.getElementById('packMaterialCode').value.trim();
+        const qty = parseInt(document.getElementById('packQty').value) || 1;
+        if (!materialCode) { alert('請輸入料號'); return; }
+        const operator = localStorage.getItem('username') || 'admin';
+        try {
+            const res = await fetch(`${API_BASE}/boxes/${encodeURIComponent(currentSelectedBox)}/add-item`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ operator, material_code: materialCode, quantity: qty })
+            });
+            if (res.ok) {
+                alert('加入成功');
+                document.getElementById('packMaterialCode').value = '';
+                document.getElementById('packQty').value = '1';
+                await loadBoxesForDoc();
+                await selectBox(currentSelectedBox);
+                // 更新待包裝列表
+                if (packMaterials.length) {
+                    const idx = packMaterials.findIndex(p => p.material_code === materialCode);
+                    if (idx !== -1) {
+                        packMaterials[idx].pending_qty -= qty;
+                        if (packMaterials[idx].pending_qty < 0) packMaterials[idx].pending_qty = 0;
+                        const container = document.getElementById('packMaterialsList');
+                        container.innerHTML = packMaterials.filter(p => p.pending_qty > 0).map(i => `
+                            <div class="border-b py-1 flex justify-between">
+                                <span><span class="font-mono">${escapeHtml(i.material_code)}</span> ${escapeHtml(i.material_name)} ${i.spec ? `(${escapeHtml(i.spec)})` : ''}</span>
+                                <span class="text-blue-600">待包裝: ${i.pending_qty}</span>
+                            </div>
+                        `).join('');
+                        if (!packMaterials.some(p => p.pending_qty > 0)) container.innerHTML = '<div class="text-gray-400">⚠️ 所有物料已包裝完畢</div>';
+                    }
+                }
+            } else {
+                const err = await res.json();
+                alert(`加入失敗: ${err.detail}`);
+            }
+        } catch(e) { alert(`請求錯誤: ${e.message}`); }
+    }
+
+    async function sealCurrentBox() {
+        if (!currentSelectedBox) { alert('請先選擇一個箱子'); return; }
+        const operator = localStorage.getItem('username') || 'admin';
+        const sealedBox = currentSelectedBox;
+        try {
+            const res = await fetch(`${API_BASE}/boxes/${encodeURIComponent(currentSelectedBox)}/seal?operator=${encodeURIComponent(operator)}`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                alert('封箱完成');
+                await loadBoxesForDoc();
+                const nextOpen = currentBoxes.find(b => b.box_number !== sealedBox && b.status !== '已封箱');
+                if (nextOpen) selectBox(nextOpen.box_number);
+                else currentSelectedBox = null;
+            } else {
+                const err = await res.json();
+                alert(`封箱失敗: ${err.detail}`);
+            }
+        } catch(e) { alert(`請求錯誤: ${e.message}`); }
+    }
+
+    async function openMoveBoxModal() {
+        try {
+            const docs = await apiFetch(`${API_BASE}/documents/with-sealed-boxes`);
+            if (docs.length === 0) { alert('沒有已封箱的箱子可供移轉'); return; }
+            const container = document.getElementById('boxCheckList');
+            let html = `
+                <div class="mb-3"><label class="block text-sm font-medium mb-1">選擇單據</label>
+                <select id="moveDocSelect" class="w-full border rounded p-2">
+                    <option value="">-- 請選擇 --</option>
+                    ${docs.map(d => `<option value="${escapeHtml(d.doc_number)}">${escapeHtml(d.doc_number)} (${d.box_count} 個箱子)</option>`).join('')}
+                </select></div>
+                <div id="moveBoxList" class="max-h-48 overflow-auto border rounded p-2 hidden"></div>
+            `;
+            container.innerHTML = html;
+            const docSelect = document.getElementById('moveDocSelect');
+            const boxListDiv = document.getElementById('moveBoxList');
+            docSelect.onchange = async () => {
+                const docNumber = docSelect.value;
+                if (!docNumber) { boxListDiv.classList.add('hidden'); return; }
+                const boxes = await apiFetch(`${API_BASE}/boxes/?doc_number=${encodeURIComponent(docNumber)}&status=已封箱`);
+                if (boxes.length === 0) {
+                    boxListDiv.innerHTML = '<div class="text-gray-400">該單據沒有已封箱的箱子</div>';
+                    boxListDiv.classList.remove('hidden');
+                    return;
+                }
+                boxListDiv.innerHTML = boxes.map(b => `<label class="flex items-center gap-2 mb-1"><input type="checkbox" value="${escapeHtml(b.box_number)}" data-doc="${escapeHtml(docNumber)}" class="move-checkbox"><span>${escapeHtml(b.box_number)} (內含 ${b.qty_inside} 個物料)</span></label>`).join('');
+                boxListDiv.classList.remove('hidden');
+            };
+            if (docSelect.value) docSelect.onchange();
+            document.getElementById('moveBoxModal').classList.remove('hidden');
+        } catch(e) { alert(`加載失敗: ${e.message}`); }
+    }
+
+    async function confirmMoveBoxes() {
+        const checkboxes = document.querySelectorAll('#moveBoxList .move-checkbox:checked');
+        if (checkboxes.length === 0) { alert('請至少選擇一個箱子'); return; }
+        const groups = new Map();
+        for (const cb of checkboxes) {
+            const doc = cb.getAttribute('data-doc');
+            const box = cb.value;
+            if (!groups.has(doc)) groups.set(doc, []);
+            groups.get(doc).push(box);
+        }
+        const operator = localStorage.getItem('username') || 'admin';
+        let totalSuccess = 0, totalFailed = 0;
+        for (const [doc, boxes] of groups.entries()) {
+            try {
+                const res = await fetch(`${API_BASE}/documents/${encodeURIComponent(doc)}/move-boxes-to-shipping`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ box_numbers: boxes, operator })
+                });
+                const result = await res.json();
+                if (res.ok) totalSuccess += (result.box_count || boxes.length);
+                else { totalFailed += boxes.length; alert(`單據 ${doc} 移轉失敗: ${result.detail}`); }
+            } catch(e) { totalFailed += boxes.length; alert(`單據 ${doc} 請求錯誤: ${e.message}`); }
+        }
+        alert(`移轉完成：成功 ${totalSuccess} 個箱子，失敗 ${totalFailed} 個`);
+        document.getElementById('moveBoxModal').classList.add('hidden');
+        if (currentPackDocNumber) {
+            await loadBoxesForDoc();
+            await loadPackMaterials(currentPackDocNumber);
+        }
+    }
+
+    let currentPrintBox = null;
+    function showPrintModal(boxNumber) {
+        currentPrintBox = boxNumber;
+        const previewDiv = document.getElementById('printQrPreview');
+        if (!previewDiv) return;
+        previewDiv.innerHTML = '';
+        new QRCode(previewDiv, { text: boxNumber, width: 128, height: 128 });
+        document.getElementById('printQrModal').classList.remove('hidden');
+    }
+    function closePrintModal() { document.getElementById('printQrModal').classList.add('hidden'); currentPrintBox = null; }
+    function printQRCode() {
+        const boxNumber = currentPrintBox;
+        if (!boxNumber) return;
+        const copies = parseInt(document.getElementById('printCopies').value) || 1;
+        const size = document.getElementById('printSize').value;
+        let sizeStyle = size === 'small' ? 'width:50mm; height:50mm;' : (size === 'medium' ? 'width:70mm; height:70mm;' : 'width:100mm; height:100mm;');
+        const img = document.querySelector('#printQrPreview img');
+        if (!img || !img.src) { alert('無法取得 QR 碼預覽'); return; }
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(`
+            <html><head><title>列印 QR 碼 - ${boxNumber}</title>
+            <style>@page { margin: 0; } body { margin: 0; padding: 0; text-align: center; } .qr-page { page-break-after: always; display: flex; justify-content: center; align-items: center; height: 100vh; } .qr-img { ${sizeStyle} }</style>
+            </head>
+            <body>${Array(copies).fill(0).map(() => `<div class="qr-page"><img class="qr-img" src="${img.src}"></div>`).join('')}</body></html>
+        `);
+        printWindow.document.close();
+        printWindow.print();
+        closePrintModal();
+    }
+
+    function bindPackEvents() {
+        document.getElementById('refreshPackDocsBtn').onclick = loadPackDocs;
+        document.getElementById('createNewBoxBtn').onclick = createNewBox;
+        document.getElementById('addToCurrentBoxBtn').onclick = addToCurrentBox;
+        document.getElementById('sealCurrentBoxBtn').onclick = sealCurrentBox;
+        document.getElementById('moveToShippingBtn').onclick = openMoveBoxModal;
+        document.getElementById('packDocSelect').onchange = async () => {
+            currentPackDocNumber = document.getElementById('packDocSelect').value;
+            if (!currentPackDocNumber) {
+                document.getElementById('packCurrentDocInfo').classList.add('hidden');
+                return;
+            }
+            document.getElementById('packCurrentDocInfo').innerHTML = `<strong>目前單據：${escapeHtml(currentPackDocNumber)}</strong>`;
+            document.getElementById('packCurrentDocInfo').classList.remove('hidden');
+            await loadPackMaterials(currentPackDocNumber);
+            await loadBoxesForDoc();
+        };
+    }
+
+    function escapeHtml(s) { if (!s) return ''; return s.replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m])); }
+    function logout() { localStorage.clear(); location.href = 'login.html'; }
+
+    if (!document.getElementById('moveBoxModal')) {
+        const modalDiv = document.createElement('div');
+        modalDiv.id = 'moveBoxModal';
+        modalDiv.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50';
+        modalDiv.innerHTML = `<div class="bg-white rounded-xl p-6 max-w-md w-full"><h3 class="text-lg font-bold mb-3">選擇要移轉的箱子</h3><div id="boxCheckList" class="max-h-64 overflow-auto mb-4"></div><div class="flex justify-end gap-2"><button id="cancelMoveBtn" class="bg-gray-300 px-3 py-1 rounded">取消</button><button id="confirmMoveBtn" class="bg-blue-600 text-white px-3 py-1 rounded">確認移轉</button></div></div>`;
+        document.body.appendChild(modalDiv);
+        document.getElementById('cancelMoveBtn').onclick = () => document.getElementById('moveBoxModal').classList.add('hidden');
+        document.getElementById('confirmMoveBtn').onclick = confirmMoveBoxes;
+    }
+    if (!document.getElementById('printQrModal')) {
+        const printModal = document.createElement('div');
+        printModal.id = 'printQrModal';
+        printModal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50';
+        printModal.innerHTML = `<div class="bg-white rounded-xl p-6 max-w-sm w-full"><h3 class="text-lg font-bold mb-3">列印 QR 碼</h3><div id="printQrPreview" class="flex justify-center my-4"></div><div class="mb-2"><label class="block text-sm font-medium">列印份數</label><input type="number" id="printCopies" value="2" min="1" max="10" class="border p-2 rounded w-full"></div><div class="mb-4"><label class="block text-sm font-medium">標籤尺寸</label><select id="printSize" class="border p-2 rounded w-full"><option value="small">小 (50x50mm)</option><option value="medium" selected>中 (70x70mm)</option><option value="large">大 (100x100mm)</option></select></div><div class="flex justify-end gap-2"><button id="cancelPrintBtn" class="bg-gray-300 px-3 py-1 rounded">取消</button><button id="confirmPrintBtn" class="bg-blue-600 text-white px-3 py-1 rounded">列印</button></div></div>`;
+        document.body.appendChild(printModal);
+        document.getElementById('cancelPrintBtn').onclick = closePrintModal;
+        document.getElementById('confirmPrintBtn').onclick = printQRCode;
+    }
+
+    bindPackEvents();
+    loadPackDocs();
+</script>
+</body>
+</html>

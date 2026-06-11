@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>倉管員工作台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .card-hover { transition: transform 0.2s, box-shadow 0.2s; }
+        .card-hover:hover { transform: translateY(-4px); box-shadow: 0 10px 20px rgba(0,0,0,0.1); }
+    </style>
+</head>
+<body class="bg-gray-100 p-6">
+<div class="max-w-7xl mx-auto">
+    <!-- 頂部標題與功能按鈕 -->
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-3xl font-bold">📦 倉管員工作台</h1>
+        <div class="space-x-2">
+            <a href="stock_query.html" class="bg-blue-500 text-white px-3 py-1 rounded text-sm">📊 庫存查詢</a>
+            <a href="history.html" class="bg-blue-500 text-white px-3 py-1 rounded text-sm">📜 歷史紀錄</a>
+            <a href="reprint_qr.html" class="bg-blue-500 text-white px-3 py-1 rounded text-sm">🖨️ QR列印</a>
+            <button onclick="logout()" class="bg-red-500 text-white px-3 py-1 rounded text-sm">登出</button>
+        </div>
+    </div>
+
+    <p class="text-gray-600 mb-6">歡迎，<span id="userNameDisplay"></span> 👋</p>
+
+    <!-- 任務卡片區 -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <!-- 我的入庫任務 -->
+        <div class="bg-white rounded-xl shadow p-5 card-hover cursor-pointer" onclick="location.href='my_inbound_tasks.html'">
+            <div class="text-4xl mb-2">📥</div>
+            <h2 class="text-xl font-bold text-blue-600">我的入庫任務</h2>
+            <p class="text-gray-500 mt-1">執行入庫作業</p>
+        </div>
+        <!-- 我的檢貨任務 -->
+        <div class="bg-white rounded-xl shadow p-5 card-hover cursor-pointer" onclick="location.href='my_picking_tasks.html'">
+            <div class="text-4xl mb-2">📦</div>
+            <h2 class="text-xl font-bold text-green-600">我的檢貨任務</h2>
+            <p class="text-gray-500 mt-1">分區發料作業</p>
+        </div>
+        <!-- 我的盤點任務 -->
+        <div class="bg-white rounded-xl shadow p-5 card-hover cursor-pointer" onclick="location.href='my_tasks.html'">
+            <div class="text-4xl mb-2">📋</div>
+            <h2 class="text-xl font-bold text-purple-600">我的盤點任務</h2>
+            <p class="text-gray-500 mt-1">庫存盤點作業</p>
+        </div>
+        <!-- 領退料單（新增） -->
+        <div class="bg-white rounded-xl shadow p-5 card-hover cursor-pointer" onclick="location.href='material_transaction.html'">
+            <div class="text-4xl mb-2">📋</div>
+            <h2 class="text-xl font-bold text-orange-600">領退料單</h2>
+            <p class="text-gray-500 mt-1">非生產領料/退料</p>
+        </div>
+    </div>
+
+    <!-- 快速說明卡片（可選） -->
+    <div class="bg-white rounded-xl shadow p-5">
+        <h2 class="text-lg font-bold mb-2">📌 今日工作提示</h2>
+        <ul class="list-disc list-inside text-gray-700 space-y-1">
+            <li>點擊「我的入庫任務」可掃描料號完成入庫。</li>
+            <li>「我的檢貨任務」支援掃描條碼發料。</li>
+            <li>「我的盤點任務」可掃描料號錄入實盤數量。</li>
+            <li>「領退料單」用於現場臨時領料或退料，不經採購/製令流程。</li>
+        </ul>
+    </div>
+</div>
+
+<script>
+    // 顯示登入用戶姓名（從 token 或 localStorage 取得）
+    const username = localStorage.getItem('username') || '倉管員';
+    document.getElementById('userNameDisplay').innerText = username;
+
+    function logout() {
+        localStorage.clear();
+        location.href = 'login.html';
+    }
+
+    // 檢查 token
+    if (!localStorage.getItem('access_token')) {
+        alert('請先登入');
+        location.href = 'login.html';
+    }
+</script>
+</body>
+</html>

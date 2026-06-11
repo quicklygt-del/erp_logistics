@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+asyncpg
+pydantic
+python-multipart
+pandas
+openpyxl
+xlsxwriter
+python-jose[cryptography]
+passlib
+python-dateutil

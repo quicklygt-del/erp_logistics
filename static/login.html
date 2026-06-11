@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ERP 物流系統登入</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center h-screen">
+<div class="bg-white p-8 rounded-xl shadow-lg w-96">
+    <h1 class="text-2xl font-bold mb-6 text-center">📦 ERP 物流系統</h1>
+    <div>
+        <label class="block text-sm font-medium">帳號</label>
+        <select id="username" class="border p-2 rounded w-full mb-3">
+            <option value="">載入中...</option>
+        </select>
+        <label class="block text-sm font-medium">密碼</label>
+        <input type="password" id="password" class="border p-2 rounded w-full mb-4" placeholder="輸入密碼">
+        <button id="loginBtn" class="bg-blue-600 text-white w-full py-2 rounded hover:bg-blue-700 transition">登入</button>
+        <div id="errorMsg" class="text-red-500 text-sm mt-2 hidden"></div>
+    </div>
+</div>
+
+<script>
+    const API_BASE = "/api/v1";
+
+    async function loadLoginUsers() {
+        const select = document.getElementById('username');
+        try {
+            const res = await fetch(`${API_BASE}/auth/login-users`);
+            if (!res.ok) throw new Error('無法載入用戶列表');
+            const users = await res.json();
+            if (!users.length) {
+                select.innerHTML = '<option value="">暫無可用帳號</option>';
+                return;
+            }
+            select.innerHTML = '';
+            users.forEach(user => {
+                const option = document.createElement('option');
+                option.value = user.username;
+                const displayName = user.full_name ? `${user.full_name} (${user.role})` : `${user.username} (${user.role})`;
+                option.textContent = displayName;
+                select.appendChild(option);
+            });
+        } catch (e) {
+            console.error('載入用戶列表失敗', e);
+            select.innerHTML = '<option value="">⚠️ 載入失敗，請重新整理頁面</option>';
+            // 增加重試按鈕（避免使用者卡住）
+            const existingBtn = document.querySelector('#retryLoadUsersBtn');
+            if (!existingBtn) {
+                const retryBtn = document.createElement('button');
+                retryBtn.id = 'retryLoadUsersBtn';
+                retryBtn.textContent = '重新嘗試載入帳號';
+                retryBtn.onclick = () => loadLoginUsers();
+                retryBtn.className = 'mt-2 bg-gray-500 text-white px-3 py-1 rounded text-sm w-full';
+                select.parentNode.appendChild(retryBtn);
+            }
+        }
+    }
+
+    document.getElementById('loginBtn').onclick = async () => {
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+        const errorDiv = document.getElementById('errorMsg');
+        if (!username || !password) {
+            errorDiv.innerText = '請填寫完整';
+            errorDiv.classList.remove('hidden');
+            return;
+        }
+        try {
+            const formData = new URLSearchParams();
+            formData.append('username', username);
+            formData.append('password', password);
+            const tokenRes = await fetch(`${API_BASE}/auth/token`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: formData
+            });
+            if (!tokenRes.ok) {
+                const err = await tokenRes.json();
+                errorDiv.innerText = err.detail || '登入失敗';
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+            const tokenData = await tokenRes.json();
+            const accessToken = tokenData.access_token;
+            localStorage.setItem('access_token', accessToken);
+
+            const meRes = await fetch(`${API_BASE}/auth/users/me`, {
+                headers: { 'Authorization': `Bearer ${accessToken}` }
+            });
+            if (!meRes.ok) throw new Error('無法獲取用戶信息');
+            const me = await meRes.json();
+            localStorage.setItem('user_role', me.role);
+            localStorage.setItem('username', me.username);
+
+            switch (me.role) {
+                case 'receiver':
+                    window.location.href = 'receiver_dashboard.html';
+                    break;
+                case 'qc':
+                    window.location.href = 'qc_dashboard.html';
+                    break;
+                case 'packer':
+                    window.location.href = 'packing_dashboard.html';
+                    break;
+                case 'warehouse':
+                    window.location.href = 'command_center.html';
+                    break;
+                case 'admin':
+                    window.location.href = 'admin_dashboard.html';
+                    break;
+                case 'operator':
+                    window.location.href = 'worker_dashboard.html';
+                    break;
+                default:
+                    alert('未知角色，請聯繫管理員');
+                    window.location.href = 'login.html';
+            }
+        } catch (e) {
+            errorDiv.innerText = '網路錯誤: ' + e.message;
+            errorDiv.classList.remove('hidden');
+        }
+    };
+
+    loadLoginUsers();
+</script>
+</body>
+</html>

@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>我的檢貨任務</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <style>
+        .pick-row { transition: background-color 0.2s; }
+        .highlight { background-color: #fff3cd; }
+        #reader { width: 100%; max-width: 500px; margin-top: 10px; }
+        /* 表格样式：固定布局 + 边框 + 列宽比例 */
+        .data-table {
+            table-layout: fixed;
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .data-table th, .data-table td {
+            border: 1px solid #e5e7eb;
+            padding: 0.5rem;
+            text-align: left;
+            vertical-align: top;
+            word-break: break-word;
+        }
+        .data-table th {
+            background-color: #f9fafb;
+            font-weight: 600;
+        }
+        /* 物料明细表列宽（7列） */
+        .items-table th:nth-child(1) { width: 15%; }  /* 料號 */
+        .items-table th:nth-child(2) { width: 20%; }  /* 品名 */
+        .items-table th:nth-child(3) { width: 15%; }  /* 規格 */
+        .items-table th:nth-child(4) { width: 10%; }  /* 需求數量 */
+        .items-table th:nth-child(5) { width: 10%; }  /* 已發數量 */
+        .items-table th:nth-child(6) { width: 10%; }  /* 待發數量 */
+        .items-table th:nth-child(7) { width: 10%; }  /* 操作 */
+    </style>
+</head>
+<body class="bg-gray-100 p-6">
+<div class="max-w-7xl mx-auto">
+    <div class="flex justify-between items-center mb-4">
+        <h1 class="text-3xl font-bold">📦 我的檢貨任務</h1>
+        <div>
+            <button onclick="location.href='worker_dashboard.html'" class="bg-gray-500 text-white px-3 py-1 rounded text-sm">← 返回工作台</button>
+            <button onclick="logout()" class="bg-red-500 text-white px-3 py-1 rounded text-sm ml-2">登出</button>
+        </div>
+    </div>
+
+    <div id="taskList" class="bg-white rounded shadow p-4 mb-4">
+        <div id="taskListContent" class="text-center py-4">載入中...</div>
+    </div>
+
+    <div id="workingArea" class="bg-white rounded shadow p-4 hidden">
+        <div class="flex justify-between items-center mb-3">
+            <h2 id="currentSheetTitle" class="text-lg font-bold"></h2>
+            <button id="backBtn" class="bg-gray-500 text-white px-3 py-1 rounded">返回任務列表</button>
+        </div>
+        <div class="flex flex-wrap gap-2 mb-3 bg-gray-50 p-2 rounded">
+            <input type="text" id="scanMaterialCode" placeholder="掃描或輸入料號 (按 Enter 定位)" class="border flex-1 p-2 rounded" autofocus>
+            <input type="number" id="pickQty" placeholder="數量" value="1" class="border w-24 p-2 rounded" min="1">
+            <button id="pickBtn" class="bg-green-600 text-white px-4 py-2 rounded">發料</button>
+            <button id="cameraBtn" class="bg-purple-600 text-white px-4 py-2 rounded">📷 掃描</button>
+        </div>
+        <div id="reader" class="hidden"></div>
+        <div class="overflow-x-auto max-h-96">
+            <table class="data-table items-table">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th>料號</th>
+                        <th>品名</th>
+                        <th>規格</th>
+                        <th>需求數量</th>
+                        <th>已發數量</th>
+                        <th>待發數量</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="itemsTbody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    const API_BASE = "/api/v1";
+    let token = localStorage.getItem('access_token');
+    if (!token) { alert('請先登入'); location.href = 'login.html'; }
+    let currentUsername = localStorage.getItem('username') || '';
+    let html5QrCode = null;
+    let currentTaskDoc = "";
+
+    async function apiFetch(url, opts = {}) {
+        opts.headers = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            ...(opts.headers || {})
+        };
+        const res = await fetch(url, opts);
+        if (res.status === 401) { alert('登入過期'); localStorage.removeItem('access_token'); location.href = 'login.html'; throw new Error('Unauthorized'); }
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+    }
+
+    function escapeHtml(s) { return s.replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m])); }
+
+    async function loadTasks() {
+        try {
+            const tasks = await apiFetch(`${API_BASE}/documents/my-picking-tasks`);
+            const container = document.getElementById('taskListContent');
+            if (!tasks.length) {
+                container.innerHTML = '<div class="text-gray-400">暫無指派給您的檢貨任務</div>';
+                return;
+            }
+            container.innerHTML = tasks.map(t => `
+                <div class="border rounded p-3 mb-2 flex justify-between items-center">
+                    <div><strong>${escapeHtml(t.doc_number)}</strong> - 狀態：${t.picking_status === '待检货' ? '待檢貨' : '進行中'}</div>
+                    <button class="start-task bg-green-600 text-white px-3 py-1 rounded" data-doc="${t.doc_number}">開始檢貨</button>
+                </div>
+            `).join('');
+            document.querySelectorAll('.start-task').forEach(btn => {
+                btn.onclick = async () => {
+                    currentTaskDoc = btn.dataset.doc;
+                    await loadTaskItems();
+                    document.getElementById('workingArea').classList.remove('hidden');
+                    document.getElementById('taskList').classList.add('hidden');
+                    document.getElementById('currentSheetTitle').innerHTML = `正在檢貨：${currentTaskDoc}`;
+                    document.getElementById('scanMaterialCode').focus();
+                    if (html5QrCode) { await html5QrCode.stop(); document.getElementById('reader').classList.add('hidden'); }
+                };
+            });
+        } catch(e) { alert('載入任務失敗: ' + e.message); }
+    }
+
+    async function loadTaskItems() {
+        try {
+            const items = await apiFetch(`${API_BASE}/documents/picking-tasks/${currentTaskDoc}/items`);
+            const tbody = document.getElementById('itemsTbody');
+            if (!items.length) { tbody.innerHTML = '<tr><td colspan="7" class="text-center">無物料</tbody>'; return; }
+            tbody.innerHTML = items.map(it => `
+                <tr data-code="${escapeHtml(it.material_code)}" class="pick-row">
+                    <td class="p-2">${escapeHtml(it.material_code)}</td>
+                    <td class="p-2">${escapeHtml(it.material_name)}</td>
+                    <td class="p-2">${escapeHtml(it.spec)}</td>
+                    <td class="p-2 text-center">${it.required_qty}</td>
+                    <td class="p-2 text-center issued-qty">${it.issued_qty}</td>
+                    <td class="p-2 text-center pending-qty">${it.pending_qty}</td>
+                    <td class="p-2 text-center"><button class="clear-row bg-gray-300 px-2 py-1 rounded text-xs" data-code="${escapeHtml(it.material_code)}">清除已發</button></td>
+                </tr>
+            `).join('');
+            // 绑定清除已發按钮
+            document.querySelectorAll('.clear-row').forEach(btn => {
+                btn.onclick = async () => {
+                    if (!confirm('確定清除該物料的已發數量？此操作不可逆')) return;
+                    try {
+                        await apiFetch(`${API_BASE}/documents/picking-tasks/${currentTaskDoc}/clear?material_code=${btn.dataset.code}`, { method: 'POST' });
+                        alert('已清除');
+                        await loadTaskItems();
+                    } catch(e) { alert('清除失敗: ' + e.message); }
+                };
+            });
+        } catch(e) { alert('載入明細失敗: ' + e.message); }
+    }
+
+    async function pickMaterial(materialCode, qty) {
+        try {
+            await apiFetch(`${API_BASE}/documents/picking-tasks/${currentTaskDoc}/pick`, {
+                method: 'POST',
+                body: JSON.stringify({ material_code: materialCode, picked_qty: qty, operator: currentUsername })
+            });
+            alert('發料成功');
+            await loadTaskItems();
+            const hasPending = Array.from(document.querySelectorAll('.pending-qty')).some(td => parseInt(td.innerText) > 0);
+            if (!hasPending) {
+                alert('檢貨完成！該製令單已轉為待包裝');
+                document.getElementById('workingArea').classList.add('hidden');
+                document.getElementById('taskList').classList.remove('hidden');
+                await loadTasks();
+            }
+        } catch(e) { alert('發料失敗: ' + e.message); }
+    }
+
+    function handleScan(code) {
+        const row = document.querySelector(`tr[data-code="${escapeHtml(code)}"]`);
+        if (row) {
+            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            row.classList.add('highlight');
+            setTimeout(() => row.classList.remove('highlight'), 1000);
+            document.getElementById('pickQty').focus();
+            window.scannedCode = code;
+        } else { alert(`找不到料號: ${code}`); }
+    }
+
+    async function startCamera() {
+        const readerDiv = document.getElementById('reader');
+        readerDiv.classList.remove('hidden');
+        if (html5QrCode) await html5QrCode.stop();
+        html5QrCode = new Html5Qrcode("reader");
+        try {
+            await html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } },
+                (decodedText) => {
+                    html5QrCode.stop();
+                    readerDiv.classList.add('hidden');
+                    document.getElementById('scanMaterialCode').value = decodedText;
+                    handleScan(decodedText);
+                }, () => {});
+        } catch(err) { alert('無法啟動相機: ' + err); readerDiv.classList.add('hidden'); }
+    }
+
+    document.getElementById('pickBtn').onclick = () => {
+        let materialCode = document.getElementById('scanMaterialCode').value.trim();
+        if (!materialCode && window.scannedCode) materialCode = window.scannedCode;
+        if (!materialCode) { alert('請先掃描或輸入料號'); return; }
+        const qty = parseInt(document.getElementById('pickQty').value);
+        if (isNaN(qty) || qty <= 0) { alert('請輸入有效數量'); return; }
+        pickMaterial(materialCode, qty);
+        document.getElementById('scanMaterialCode').value = '';
+        document.getElementById('pickQty').value = '1';
+        window.scannedCode = null;
+    };
+    document.getElementById('scanMaterialCode').onkeypress = (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); handleScan(e.target.value.trim()); e.target.value = ''; }
+    };
+    document.getElementById('cameraBtn').onclick = () => { if (html5QrCode) html5QrCode.stop().catch(console.warn); startCamera(); };
+    document.getElementById('backBtn').onclick = () => {
+        document.getElementById('workingArea').classList.add('hidden');
+        document.getElementById('taskList').classList.remove('hidden');
+        if (html5QrCode) { html5QrCode.stop().catch(console.warn); document.getElementById('reader').classList.add('hidden'); }
+        loadTasks();
+    };
+    window.logout = () => { localStorage.clear(); location.href = 'login.html'; };
+    loadTasks();
+</script>
+</body>
+</html>

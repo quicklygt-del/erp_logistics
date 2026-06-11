@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>    
+<head>
+    <meta charset="UTF-8">
+    <title>JWT 登录测试</title>
+</head>
+<body>
+    <h2>登录测试</h2>
+    <input type="text" id="username" placeholder="用户名" value="admin"><br>
+    <input type="password" id="password" placeholder="密码" value="admin123"><br>
+    <button onclick="login()">登录</button>
+
+    <h3>调用需要认证的接口（/auth/users/me）</h3>
+    <button onclick="getUserInfo()">获取用户信息</button>
+    <pre id="result"></pre>
+
+    <script>
+        let accessToken = null;
+
+        async function login() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            const formData = new URLSearchParams();
+            formData.append('username', username);
+            formData.append('password', password);
+
+            try {
+                const response = await fetch('http://127.0.0.1:8000/auth/token', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: formData
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    accessToken = data.access_token;
+                    document.getElementById('result').innerText = '登录成功！Token: ' + accessToken;
+                } else {
+                    document.getElementById('result').innerText = '登录失败: ' + JSON.stringify(data);
+                }
+            } catch (err) {
+                document.getElementById('result').innerText = '请求错误: ' + err;
+            }
+        }
+
+        async function getUserInfo() {
+            if (!accessToken) {
+                document.getElementById('result').innerText = '请先登录';
+                return;
+            }
+            try {
+                const response = await fetch('http://127.0.0.1:8000/auth/users/me', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': 'Bearer ' + accessToken
+                    }
+                });
+                const data = await response.json();
+                document.getElementById('result').innerText = JSON.stringify(data, null, 2);
+            } catch (err) {
+                document.getElementById('result').innerText = '请求错误: ' + err;
+            }
+        }
+    </script>
+</body>
+</html>

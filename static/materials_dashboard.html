@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>主儲倉管理中心</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+</head>
+<body class="bg-gray-100 p-6">
+<div class="max-w-7xl mx-auto">
+    <!-- 頂部標題與公用功能 -->
+    <div class="flex justify-between items-center mb-4">
+        <div class="flex items-center gap-3">
+            <button onclick="location.href='command_center.html'" class="bg-gray-500 text-white px-3 py-1 rounded text-sm">← 返回指揮塔</button>
+            <h1 class="text-2xl font-bold">📦 主儲倉管理中心</h1>
+        </div>
+        <div class="space-x-2">
+            <a href="stock_query.html" class="bg-blue-500 text-white px-3 py-1 rounded text-sm">🔍 庫存查詢</a>
+            <a href="history.html" class="bg-blue-500 text-white px-3 py-1 rounded text-sm">📜 歷史紀錄</a>
+            <a href="reprint_qr.html" class="bg-blue-500 text-white px-3 py-1 rounded text-sm">🖨️ QR列印</a>
+            <button onclick="logout()" class="bg-red-500 text-white px-3 py-1 rounded text-sm">登出</button>
+        </div>
+    </div>
+
+    <!-- 主儲倉面板內容 -->
+    <div id="materialsPanel">
+        <div class="flex justify-end mb-4">
+            <div>
+                <button id="refreshMaterialsBtn" class="bg-blue-600 text-white px-4 py-2 rounded">重新整理</button>
+                <button id="exportMaterialsBtn" class="bg-green-600 text-white px-4 py-2 rounded ml-2">下載現況帳</button>
+            </div>
+        </div>
+        <div class="bg-white p-4 rounded shadow mb-4">
+            <h2 class="font-bold">📂 上傳 Excel</h2>
+            <div class="flex gap-2 mt-2">
+                <select id="uploadMode" class="border p-1">
+                    <option value="update">更新模式</option>
+                    <option value="overwrite">覆蓋模式</option>
+                </select>
+                <input type="file" id="excelFile" accept=".xlsx,.xls" class="hidden">
+                <button id="uploadExcelBtn" class="bg-indigo-600 text-white px-3 py-1 rounded">上傳</button>
+            </div>
+            <div id="uploadMessage" class="text-sm mt-2"></div>
+        </div>
+        <div class="bg-white p-4 rounded shadow mb-4">
+            <h2 class="font-bold">🔍 物料查詢</h2>
+            <div class="flex gap-2">
+                <input type="text" id="searchKeyword" placeholder="料號/品名" class="border flex-1 p-1">
+                <button id="searchMaterialsBtn" class="bg-gray-700 text-white px-3 py-1 rounded">搜尋</button>
+            </div>
+        </div>
+        <div class="bg-white rounded shadow overflow-x-auto">
+            <table class="min-w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th>料號</th>
+                        <th>品名</th>
+                        <th>規格</th>
+                        <th>庫存數量</th>
+                        <th>安全庫存</th>
+                        <th>儲位</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="materialsTableBody">
+                    <tr><td colspan="7" class="text-center py-4">載入中...</tbody>
+                </tbody>
+            </table>
+        </div>
+        <div class="flex justify-between mt-2">
+            <span id="pageInfo"></span>
+            <div>
+                <button id="prevPage" class="border px-2 py-1">←</button>
+                <button id="nextPage" class="border px-2 py-1 ml-1">→</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- QR Code 模態框（若有需要） -->
+<div id="qrModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+    <div class="bg-white p-6 rounded text-center">
+        <div id="qrCodeContainer"></div>
+        <p id="qrMaterialInfo" class="my-2"></p>
+        <button id="printQrBtn" class="bg-blue-600 text-white px-3 py-1 rounded">列印</button>
+        <button id="closeModalBtn" class="bg-gray-300 px-3 py-1 rounded ml-2">關閉</button>
+    </div>
+</div>
+
+<script>
+    const API_BASE = "/api/v1";
+    let token = localStorage.getItem('access_token');
+    if (!token) { alert('請先登入'); location.href = 'login.html'; }
+
+    async function apiFetch(url, opts = {}) {
+        opts.headers = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            ...(opts.headers || {})
+        };
+        const res = await fetch(url, opts);
+        if (res.status === 401) { alert('登入過期'); localStorage.removeItem('access_token'); location.href = 'login.html'; throw new Error('Unauthorized'); }
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+    }
+
+    function escapeHtml(s) { if (!s) return ''; return s.replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m])); }
+
+    // ========== 物料主檔邏輯 ==========
+    let currentPage = 0, currentSearch = "", currentTotal = 0, LIMIT = 15;
+    let currentMaterials = [];
+
+    async function loadMaterials() {
+        const off = currentPage * LIMIT;
+        let u = `${API_BASE}/materials/?limit=${LIMIT}&offset=${off}`;
+        if (currentSearch.trim()) u += `&search=${encodeURIComponent(currentSearch)}`;
+        try {
+            const d = await apiFetch(u);
+            currentMaterials = d.data || [];
+            currentTotal = d.total || 0;
+            renderMaterials();
+            updatePagination();
+        } catch(e) {
+            console.error(e);
+            document.getElementById('materialsTableBody').innerHTML = '<tr><td colspan="7" class="text-center text-red-500">載入失敗</tbody>';
+        }
+    }
+
+    function renderMaterials() {
+        const tb = document.getElementById('materialsTableBody');
+        if (!currentMaterials.length) {
+            tb.innerHTML = '<tr><td colspan="7" class="text-center">無資料</tbody>';
+            return;
+        }
+        tb.innerHTML = currentMaterials.map(m => `
+            <tr>
+                <td class="px-4 py-2 text-sm font-mono">${escapeHtml(m.material_code)}</td>
+                <td class="px-4 py-2">${escapeHtml(m.name)}</td>
+                <td class="px-4 py-2">${escapeHtml(m.spec || '')}</td>
+                <td class="text-right">${m.stock_qty}</td>
+                <td class="text-right">${m.safety_stock !== undefined ? m.safety_stock : 0}</td>
+                <td class="px-4 py-2">${escapeHtml(m.location || '')}</td>
+                <td class="text-center">
+                    <button class="qr-btn text-blue-600" data-code="${escapeHtml(m.material_code)}" data-name="${escapeHtml(m.name)}" data-spec="${escapeHtml(m.spec || '')}">
+                        <i class="fas fa-qrcode"></i> 條碼
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+        document.querySelectorAll('.qr-btn').forEach(btn => btn.addEventListener('click', () => {
+            const code = btn.dataset.code, name = btn.dataset.name, spec = btn.dataset.spec;
+            showQR(code, name, spec);
+        }));
+    }
+
+    function updatePagination() {
+        const start = currentPage * LIMIT + 1;
+        const end = Math.min((currentPage + 1) * LIMIT, currentTotal);
+        document.getElementById('pageInfo').innerHTML = `${start}-${end} / ${currentTotal}`;
+        document.getElementById('prevPage').disabled = currentPage <= 0;
+        document.getElementById('nextPage').disabled = (currentPage + 1) * LIMIT >= currentTotal;
+    }
+
+    document.getElementById('prevPage').onclick = () => { if (currentPage > 0) { currentPage--; loadMaterials(); } };
+    document.getElementById('nextPage').onclick = () => { if ((currentPage + 1) * LIMIT < currentTotal) { currentPage++; loadMaterials(); } };
+    document.getElementById('refreshMaterialsBtn').onclick = () => loadMaterials();
+    document.getElementById('exportMaterialsBtn').onclick = () => window.open(`${API_BASE}/materials/export`, '_blank');
+    document.getElementById('uploadExcelBtn').onclick = () => document.getElementById('excelFile').click();
+    document.getElementById('excelFile').onchange = async (e) => {
+        const f = e.target.files[0];
+        if (!f) return;
+        const fd = new FormData();
+        fd.append('file', f);
+        const mode = document.getElementById('uploadMode').value;
+        try {
+            const res = await fetch(`${API_BASE}/materials/upload-excel?mode=${mode}&operator=${localStorage.getItem('username')}`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: fd
+            });
+            const d = await res.json();
+            if (res.ok) {
+                document.getElementById('uploadMessage').innerHTML = `✅ 成功 ${d.inserted_updated} 筆`;
+                loadMaterials();
+            } else {
+                document.getElementById('uploadMessage').innerHTML = `❌ 失敗: ${d.detail}`;
+            }
+        } catch(err) {
+            document.getElementById('uploadMessage').innerHTML = `❌ ${err.message}`;
+        }
+    };
+    document.getElementById('searchMaterialsBtn').onclick = () => {
+        currentSearch = document.getElementById('searchKeyword').value.trim();
+        currentPage = 0;
+        loadMaterials();
+    };
+
+    // QR Code 模態框（從 index.html 複製）
+    function showQR(code, name, spec) {
+        let modal = document.getElementById('qrModal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'qrModal';
+            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50';
+            modal.innerHTML = `
+                <div class="bg-white p-6 rounded text-center">
+                    <div id="qrCodeContainer"></div>
+                    <p id="qrMaterialInfo" class="my-2"></p>
+                    <button id="printQrBtn" class="bg-blue-600 text-white px-3 py-1 rounded">列印</button>
+                    <button id="closeModalBtn" class="bg-gray-300 px-3 py-1 rounded ml-2">關閉</button>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            document.getElementById('closeModalBtn').onclick = () => modal.classList.add('hidden');
+            document.getElementById('printQrBtn').onclick = () => {
+                const img = document.querySelector('#qrCodeContainer img');
+                if (!img) return;
+                const w = window.open('');
+                w.document.write(`
+                    <html><head><title>列印</title></head>
+                    <body><img src="${img.src}" style="width:200px;"><p>${window._printData.code}<br>${window._printData.name}</p>
+                    <script>window.onload=function(){window.print();window.close();}<\/script></body></html>
+                `);
+            };
+        }
+        const container = document.getElementById('qrCodeContainer');
+        container.innerHTML = '';
+        new QRCode(container, { text: `料號:${code}\n品名:${name}\n規格:${spec}`, width: 200, height: 200 });
+        document.getElementById('qrMaterialInfo').innerHTML = `${code}<br>${name}`;
+        window._printData = { code, name, spec };
+        modal.classList.remove('hidden');
+    }
+
+    function logout() { localStorage.clear(); location.href = 'login.html'; }
+
+    loadMaterials();
+</script>
+</body>
+</html>

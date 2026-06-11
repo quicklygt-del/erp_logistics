@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>盤點管理系統（主管）</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>.modal { transition: opacity 0.2s ease; }</style>
+</head>
+<body class="bg-gray-100 p-6">
+<div class="max-w-7xl mx-auto">
+    <div class="flex justify-between items-center mb-4">
+        <h1 class="text-2xl font-bold">📋 盤點管理系統（主管）</h1>
+        <button onclick="location.href='command_center.html'" class="bg-gray-500 text-white px-3 py-1 rounded">← 返回指揮塔</button>
+    </div>
+
+    <!-- 建立盤點單 -->
+    <div class="bg-white rounded shadow p-4 mb-6">
+        <h2 class="text-lg font-semibold mb-3">➕ 建立盤點單</h2>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+            <div>
+                <label class="block text-sm font-medium">盤點單號</label>
+                <input type="text" id="sheetNo" class="border p-2 rounded w-full" placeholder="例如 PD2026060701">
+            </div>
+            <div>
+                <label class="block text-sm font-medium">倉庫</label>
+                <select id="warehouse" class="border p-2 rounded w-full">
+                    <option value="主儲倉">主儲倉</option>
+                    <option value="待驗倉">待驗倉</option>
+                    <option value="不良品倉">不良品倉</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium">盤點類型</label>
+                <select id="sheetType" class="border p-2 rounded w-full">
+                    <option value="OPEN">明盤（顯示賬面）</option>
+                    <option value="BLIND">暗盤（不顯示賬面）</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium">建立者</label>
+                <input type="text" id="createdBy" class="border p-2 rounded w-full" placeholder="admin" value="admin">
+            </div>
+        </div>
+        <div class="mt-3">
+            <label class="block text-sm font-medium">上傳盤點物料 Excel（料號必填）</label>
+            <input type="file" id="excelFile" accept=".xlsx,.xls" class="border p-1">
+            <div class="text-xs text-gray-500 mt-1">Excel 需包含「料號」欄位（可選「品名」「規格」「儲位」）</div>
+        </div>
+        <button id="createSheetBtn" class="mt-3 bg-blue-600 text-white px-4 py-2 rounded">建立盤點單</button>
+        <div id="createMsg" class="text-sm mt-2"></div>
+    </div>
+
+    <!-- 盤點單列表 -->
+    <div class="bg-white rounded shadow p-4">
+        <div class="flex justify-between items-center mb-3">
+            <h2 class="text-lg font-semibold">📋 盤點單列表</h2>
+            <button id="refreshBtn" class="bg-gray-600 text-white px-3 py-1 rounded">重新整理</button>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full border text-sm">
+                <thead class="bg-gray-50">
+                    <tr><th>單號</th><th>名稱</th><th>倉庫</th><th>類型</th><th>狀態</th><th>指派給</th><th>總項數</th><th>操作</th></tr>
+                </thead>
+                <tbody id="tasksTbody">
+                    <tr><td colspan="8" class="text-center py-4">載入中...</tbody>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 指派模態框 -->
+    <div id="assignModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="bg-white rounded-xl p-6 w-96">
+            <h3 class="text-lg font-bold mb-3">指派盤點員</h3>
+            <label class="block text-sm font-medium">盤點員帳號</label>
+            <select id="assignWorkerSelect" class="border p-2 rounded w-full mb-4">
+                <option value="">-- 請選擇 --</option>
+            </select>
+            <div class="flex justify-end gap-2">
+                <button id="cancelAssignBtn" class="bg-gray-300 px-3 py-1 rounded">取消</button>
+                <button id="confirmAssignBtn" class="bg-blue-600 text-white px-3 py-1 rounded">確認指派</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const API_BASE = "/api/v1";
+    const token = localStorage.getItem('access_token');
+    if (!token) { alert('請先登入'); location.href = 'login.html'; }
+
+    let currentSheetNo = null;
+
+    async function apiFetch(url, opts = {}) {
+        opts.headers = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            ...(opts.headers || {})
+        };
+        const res = await fetch(url, opts);
+        if (res.status === 401) { alert('登入過期'); localStorage.removeItem('access_token'); location.href = 'login.html'; throw new Error('Unauthorized'); }
+        if (res.status === 403) {
+            alert('權限不足，請使用主管或管理員帳號登入');
+            throw new Error('Forbidden');
+        }
+        if (!res.ok) {
+            const errText = await res.text();
+            throw new Error(errText);
+        }
+        return res.json();
+    }
+
+    async function loadWorkers() {
+        try {
+            const workers = await apiFetch(`${API_BASE}/admin/users/by-role/operator`);
+            const select = document.getElementById('assignWorkerSelect');
+            select.innerHTML = '<option value="">-- 請選擇 --</option>';
+            workers.forEach(w => {
+                const opt = document.createElement('option');
+                opt.value = w.username;
+                opt.textContent = w.full_name ? `${w.full_name} (${w.username})` : w.username;
+                select.appendChild(opt);
+            });
+        } catch(e) {
+            console.error('載入盤點員失敗', e);
+            const select = document.getElementById('assignWorkerSelect');
+            select.innerHTML = '<option value="">-- 請選擇 --</option>';
+            const fallback = ['inventory_taker01', 'inventory_taker02', 'zhangsan', 'lidatong', 'wangtian'];
+            fallback.forEach(w => {
+                const opt = document.createElement('option');
+                opt.value = w;
+                opt.textContent = w;
+                select.appendChild(opt);
+            });
+        }
+    }
+
+    // 建立盤點單
+    document.getElementById('createSheetBtn').onclick = async () => {
+        const sheetNo = document.getElementById('sheetNo').value.trim();
+        const warehouse = document.getElementById('warehouse').value;
+        const sheetType = document.getElementById('sheetType').value;
+        const createdBy = document.getElementById('createdBy').value.trim();
+        const file = document.getElementById('excelFile').files[0];
+
+        if (!sheetNo) { alert('請輸入盤點單號'); return; }
+        const createMsgDiv = document.getElementById('createMsg');
+        createMsgDiv.innerHTML = '建立中...';
+        try {
+            await apiFetch(`${API_BASE}/inventory/sheets`, {
+                method: 'POST',
+                body: JSON.stringify({ sheet_no: sheetNo, warehouse, sheet_type: sheetType, created_by: createdBy, sheet_name: null })
+            });
+            if (file) {
+                const formData = new FormData();
+                formData.append('file', file);
+                const uploadRes = await fetch(`${API_BASE}/inventory/sheets/${sheetNo}/upload-excel`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    body: formData
+                });
+                if (!uploadRes.ok) {
+                    const err = await uploadRes.json();
+                    throw new Error(`上傳物料失敗: ${err.detail}`);
+                }
+            }
+            createMsgDiv.innerHTML = '<span class="text-green-600">✅ 建立成功</span>';
+            loadSheets();
+            document.getElementById('sheetNo').value = '';
+            document.getElementById('excelFile').value = '';
+        } catch(e) {
+            createMsgDiv.innerHTML = `<span class="text-red-600">❌ 建立失敗: ${e.message}</span>`;
+        }
+    };
+
+    // 載入盤點單列表
+    async function loadSheets() {
+        try {
+            const sheets = await apiFetch(`${API_BASE}/inventory/sheets`);
+            const tbody = document.getElementById('tasksTbody');
+            if (!sheets.length) {
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4">暫無盤點單</tbody>';
+                return;
+            }
+            tbody.innerHTML = sheets.map(sheet => {
+                // 允許刪除的狀態：待指派 或 待盤點（未開始）
+                const canDelete = sheet.status === '待指派' || sheet.status === '待盤點';
+                return `
+                    <tr data-sheet="${sheet.sheet_no}">
+                        <td class="p-2">${escapeHtml(sheet.sheet_no)}</td>
+                        <td class="p-2">${escapeHtml(sheet.sheet_name || '-')}</td>
+                        <td class="p-2">${escapeHtml(sheet.warehouse)}</td>
+                        <td class="p-2">${sheet.sheet_type === 'OPEN' ? '明盤' : '暗盤'}</td>
+                        <td class="p-2">${escapeHtml(sheet.status)}</td>
+                        <td class="p-2">${escapeHtml(sheet.assigned_to ? (sheet.assigned_to_name || sheet.assigned_to) : '未指派')}</td>
+                        <td class="p-2 text-right">${sheet.total_items || 0}</td>
+                        <td class="p-2">
+                            <button class="assign-sheet bg-yellow-500 text-white px-2 py-1 rounded text-xs" data-sheet="${sheet.sheet_no}">指派</button>
+                            ${canDelete ? `<button class="delete-sheet bg-red-500 text-white px-2 py-1 rounded text-xs ml-1" data-sheet="${sheet.sheet_no}">刪除</button>` : ''}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+            // 指派按鈕
+            document.querySelectorAll('.assign-sheet').forEach(btn => {
+                btn.onclick = () => { currentSheetNo = btn.dataset.sheet; showAssignModal(); };
+            });
+            // 刪除按鈕
+            document.querySelectorAll('.delete-sheet').forEach(btn => {
+                btn.onclick = async () => {
+                    if (confirm(`確定刪除盤點單 ${btn.dataset.sheet} 嗎？`)) {
+                        try {
+                            await apiFetch(`${API_BASE}/inventory/sheets/${btn.dataset.sheet}`, { method: 'DELETE' });
+                            alert('刪除成功');
+                            loadSheets();
+                        } catch(e) { alert(`刪除失敗: ${e.message}`); }
+                    }
+                };
+            });
+        } catch(e) {
+            console.error(e);
+            if (e.message === 'Forbidden') {
+                document.getElementById('tasksTbody').innerHTML = `<tr><td colspan="8" class="text-center py-4 text-red-500">權限不足，請使用主管或管理員帳號登入</tbody>`;
+            } else {
+                document.getElementById('tasksTbody').innerHTML = `</table><td colspan="8" class="text-center py-4 text-red-500">載入失敗: ${e.message}</tbody>`;
+            }
+        }
+    }
+
+    function showAssignModal() {
+        loadWorkers();
+        document.getElementById('assignModal').classList.remove('hidden');
+    }
+
+    document.getElementById('confirmAssignBtn').onclick = async () => {
+        const assignedTo = document.getElementById('assignWorkerSelect').value;
+        if (!assignedTo) { alert('請選擇盤點員'); return; }
+        if (!currentSheetNo) { alert('未指定盤點單'); return; }
+        try {
+            await apiFetch(`${API_BASE}/inventory/sheets/${currentSheetNo}/assign`, {
+                method: 'PATCH',
+                body: JSON.stringify({ assigned_to: assignedTo })
+            });
+            alert('指派成功');
+            document.getElementById('assignModal').classList.add('hidden');
+            loadSheets();
+        } catch(e) { alert(`指派失敗: ${e.message}`); }
+    };
+
+    document.getElementById('cancelAssignBtn').onclick = () => {
+        document.getElementById('assignModal').classList.add('hidden');
+        currentSheetNo = null;
+    };
+    document.getElementById('refreshBtn').onclick = loadSheets;
+
+    function escapeHtml(s) { return String(s).replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m])); }
+
+    loadSheets();
+</script>
+</body>
+</html>

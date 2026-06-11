@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>用戶管理 - 管理後台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+</head>
+<body class="bg-gray-100 p-6">
+<div class="max-w-7xl mx-auto">
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-3xl font-bold">👥 用戶管理</h1>
+        <div class="space-x-2">
+            <a href="admin_dashboard.html" class="bg-gray-500 text-white px-3 py-1 rounded text-sm">← 返回後台</a>
+            <button onclick="logout()" class="bg-red-500 text-white px-3 py-1 rounded text-sm">登出</button>
+        </div>
+    </div>
+
+    <!-- 篩選與新增 -->
+    <div class="bg-white rounded shadow p-4 mb-4 flex flex-wrap gap-3 items-end">
+        <div class="flex-1">
+            <label class="block text-sm font-medium">篩選角色</label>
+            <select id="roleFilter" class="border p-2 rounded w-full">
+                <option value="">全部</option>
+                <option value="admin">管理員</option>
+                <option value="warehouse">倉儲主管</option>
+                <option value="receiver">收發</option>
+                <option value="qc">品保</option>
+                <option value="packer">包裝</option>
+                <option value="operator">倉管員</option>
+            </select>
+        </div>
+        <button id="filterBtn" class="bg-blue-600 text-white px-4 py-2 rounded">篩選</button>
+        <button id="addUserBtn" class="bg-green-600 text-white px-4 py-2 rounded">➕ 新增用戶</button>
+    </div>
+
+    <!-- 用戶列表 -->
+    <div class="bg-white rounded shadow overflow-x-auto">
+        <table class="min-w-full border text-sm">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="p-2">用戶名</th>
+                    <th>姓名</th>
+                    <th>角色</th>
+                    <th>部門</th>
+                    <th>狀態</th>
+                    <th>快速登入令牌</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="userTableBody">
+                <tr><td colspan="7" class="text-center py-4">載入中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- 新增/編輯用戶模態框 -->
+<div id="userModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+    <div class="bg-white rounded-xl p-6 w-96">
+        <h3 id="modalTitle" class="text-lg font-bold mb-3">新增用戶</h3>
+        <input type="hidden" id="editUserId">
+        <label class="block text-sm font-medium">用戶名</label>
+        <input type="text" id="modalUsername" class="border p-2 rounded w-full mb-2">
+        <label class="block text-sm font-medium">密碼</label>
+        <input type="password" id="modalPassword" class="border p-2 rounded w-full mb-2" placeholder="留空則不修改（編輯時）">
+        <label class="block text-sm font-medium">姓名</label>
+        <input type="text" id="modalFullName" class="border p-2 rounded w-full mb-2">
+        <label class="block text-sm font-medium">部門</label>
+        <input type="text" id="modalDepartment" class="border p-2 rounded w-full mb-2">
+        <label class="block text-sm font-medium">角色</label>
+        <select id="modalRole" class="border p-2 rounded w-full mb-2">
+            <option value="warehouse">倉儲主管</option>
+            <option value="receiver">收發</option>
+            <option value="qc">品保</option>
+            <option value="packer">包裝</option>
+            <option value="operator">倉管員</option>
+        </select>
+        <label class="flex items-center gap-2 mt-2">
+            <input type="checkbox" id="modalActive" checked> 啟用
+        </label>
+        <div class="flex justify-end gap-2 mt-4">
+            <button id="cancelModalBtn" class="bg-gray-300 px-3 py-1 rounded">取消</button>
+            <button id="saveUserBtn" class="bg-blue-600 text-white px-3 py-1 rounded">儲存</button>
+        </div>
+    </div>
+</div>
+
+<!-- 快速登入 QR 碼模態框 -->
+<div id="qrModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+    <div class="bg-white rounded-xl p-6 w-96 text-center">
+        <h3 class="text-lg font-bold mb-3">進場 QR 碼</h3>
+        <div id="qrCodeContainer" class="flex justify-center my-4"></div>
+        <p id="qrTokenInfo" class="text-xs text-gray-500 break-all mb-3"></p>
+        <div class="flex justify-center gap-2">
+            <button id="printQrBtn" class="bg-blue-600 text-white px-3 py-1 rounded">列印</button>
+            <button id="closeQrModal" class="bg-gray-300 px-3 py-1 rounded">關閉</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const API_BASE = "/api/v1";
+    let token = localStorage.getItem('access_token');
+    if (!token) { alert('請先登入'); location.href = 'login.html'; }
+
+    async function apiFetch(url, opts = {}) {
+        opts.headers = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            ...(opts.headers || {})
+        };
+        const res = await fetch(url, opts);
+        if (res.status === 401) { alert('登入過期'); localStorage.removeItem('access_token'); location.href = 'login.html'; throw new Error('Unauthorized'); }
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+    }
+
+    function escapeHtml(s) { if (!s) return ''; return s.replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m])); }
+
+    async function loadUsers() {
+        const role = document.getElementById('roleFilter').value;
+        let url = `${API_BASE}/admin/users/`;
+        if (role) url += `?role=${encodeURIComponent(role)}`;
+        try {
+            const users = await apiFetch(url);
+            const tbody = document.getElementById('userTableBody');
+            if (!users.length) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4">暫無用戶</tbody>';
+                return;
+            }
+            tbody.innerHTML = users.map(u => {
+                const isFixedRole = ['admin', 'warehouse', 'receiver', 'qc', 'packer'].includes(u.role);
+                const showDelete = !isFixedRole;
+                const tokenButton = u.quick_login_token 
+                    ? `<button class="qr-btn text-blue-600 text-xs" data-username="${escapeHtml(u.username)}">🔑 顯示QR碼</button>`
+                    : `<button class="generate-token-btn bg-green-500 text-white px-2 py-1 rounded text-xs" data-username="${escapeHtml(u.username)}">🎫 進場QR碼</button>`;
+                return `
+                    <tr class="border-b">
+                        <td class="p-2">${escapeHtml(u.username)}</td>
+                        <td class="p-2">${escapeHtml(u.full_name || '')}</td>
+                        <td class="p-2">${escapeHtml(u.role)}</td>
+                        <td class="p-2">${escapeHtml(u.department || '')}</td>
+                        <td class="p-2">${u.is_active ? '✅ 啟用' : '❌ 停用'}</td>
+                        <td class="p-2">${tokenButton}</td>
+                        <td class="p-2">
+                            <button class="edit-btn bg-yellow-500 text-white px-2 py-1 rounded text-xs" data-id="${u.id}" data-username="${escapeHtml(u.username)}" data-fullname="${escapeHtml(u.full_name||'')}" data-dept="${escapeHtml(u.department||'')}" data-role="${u.role}" data-active="${u.is_active}">編輯</button>
+                            <button class="reset-pwd-btn bg-purple-500 text-white px-2 py-1 rounded text-xs" data-id="${u.id}" data-username="${escapeHtml(u.username)}">重置密碼</button>
+                            ${showDelete ? `<button class="delete-btn bg-red-500 text-white px-2 py-1 rounded text-xs" data-id="${u.id}" data-username="${escapeHtml(u.username)}">刪除</button>` : ''}
+                        </td>
+                     </tr>
+                `;
+            }).join('');
+            // 綁定事件
+            document.querySelectorAll('.edit-btn').forEach(btn => btn.onclick = () => openEditModal(btn.dataset));
+            document.querySelectorAll('.delete-btn').forEach(btn => btn.onclick = () => deleteUser(btn.dataset.id, btn.dataset.username));
+            document.querySelectorAll('.reset-pwd-btn').forEach(btn => btn.onclick = () => resetPassword(btn.dataset.id, btn.dataset.username));
+            document.querySelectorAll('.generate-token-btn').forEach(btn => btn.onclick = () => generateToken(btn.dataset.username));
+            document.querySelectorAll('.qr-btn').forEach(btn => btn.onclick = () => showQR(btn.dataset.username));
+        } catch(e) { alert('載入失敗: ' + e.message); }
+    }
+
+    let editMode = false;
+    function openEditModal(data) {
+        editMode = true;
+        document.getElementById('modalTitle').innerText = '編輯用戶';
+        document.getElementById('editUserId').value = data.id;
+        document.getElementById('modalUsername').value = data.username;
+        document.getElementById('modalUsername').disabled = true;
+        document.getElementById('modalFullName').value = data.fullname;
+        document.getElementById('modalDepartment').value = data.dept;
+        document.getElementById('modalRole').value = data.role;
+        document.getElementById('modalActive').checked = data.active === 'true';
+        document.getElementById('modalPassword').value = '';
+        document.getElementById('userModal').classList.remove('hidden');
+    }
+
+    function closeModal() { document.getElementById('userModal').classList.add('hidden'); editMode = false; document.getElementById('modalUsername').disabled = false; }
+
+    document.getElementById('addUserBtn').onclick = () => {
+        editMode = false;
+        document.getElementById('modalTitle').innerText = '新增用戶';
+        document.getElementById('editUserId').value = '';
+        document.getElementById('modalUsername').value = '';
+        document.getElementById('modalUsername').disabled = false;
+        document.getElementById('modalFullName').value = '';
+        document.getElementById('modalDepartment').value = '';
+        document.getElementById('modalRole').value = 'operator';
+        document.getElementById('modalActive').checked = true;
+        document.getElementById('modalPassword').value = '';
+        document.getElementById('userModal').classList.remove('hidden');
+    };
+    document.getElementById('cancelModalBtn').onclick = closeModal;
+
+    document.getElementById('saveUserBtn').onclick = async () => {
+        const userId = document.getElementById('editUserId').value;
+        const username = document.getElementById('modalUsername').value.trim();
+        const password = document.getElementById('modalPassword').value;
+        const fullName = document.getElementById('modalFullName').value.trim();
+        const department = document.getElementById('modalDepartment').value.trim();
+        const role = document.getElementById('modalRole').value;
+        const isActive = document.getElementById('modalActive').checked;
+        if (!username) { alert('請輸入用戶名'); return; }
+        try {
+            if (editMode) {
+                const body = {};
+                if (password) body.password = password;
+                body.full_name = fullName;
+                body.department = department;
+                body.role = role;
+                body.is_active = isActive;
+                await apiFetch(`${API_BASE}/admin/users/${userId}`, { method: 'PATCH', body: JSON.stringify(body) });
+                alert('更新成功');
+            } else {
+                if (!password) { alert('請輸入密碼'); return; }
+                await apiFetch(`${API_BASE}/admin/users/`, { method: 'POST', body: JSON.stringify({ username, password, role, full_name: fullName, department }) });
+                alert('新增成功');
+            }
+            closeModal();
+            loadUsers();
+        } catch(e) { alert('操作失敗: ' + e.message); }
+    };
+
+    async function resetPassword(userId, username) {
+        const newPwd = prompt(`請輸入 ${username} 的新密碼`, username);
+        if (!newPwd) return;
+        try {
+            await apiFetch(`${API_BASE}/admin/users/${userId}`, { method: 'PATCH', body: JSON.stringify({ password: newPwd }) });
+            alert('密碼已重置');
+        } catch(e) { alert('重置失敗: ' + e.message); }
+    }
+
+    async function deleteUser(userId, username) {
+        if (!confirm(`確定刪除用戶 ${username} 嗎？此操作不可恢復`)) return;
+        try {
+            await apiFetch(`${API_BASE}/admin/users/${userId}`, { method: 'DELETE' });
+            alert('刪除成功');
+            loadUsers();
+        } catch(e) { alert('刪除失敗: ' + e.message); }
+    }
+
+    async function generateToken(username) {
+        try {
+            const users = await apiFetch(`${API_BASE}/admin/users/`);
+            const user = users.find(u => u.username === username);
+            if (!user) throw new Error('用戶不存在');
+            const data = await apiFetch(`${API_BASE}/admin/users/${user.id}/generate-qr-token`, { method: 'POST' });
+            alert(`進場QR碼已生成，請點擊「顯示QR碼」查看並列印。`);
+            loadUsers();
+        } catch(e) { alert('生成失敗: ' + e.message); }
+    }
+
+    let currentQRToken = null;
+    async function showQR(username) {
+        try {
+            const users = await apiFetch(`${API_BASE}/admin/users/`);
+            const user = users.find(u => u.username === username);
+            if (!user || !user.quick_login_token) { alert('該用戶尚未生成進場QR碼'); return; }
+            const token = user.quick_login_token;
+            currentQRToken = token;
+            const qrUrl = `${window.location.origin}/static/quick_login.html?token=${encodeURIComponent(token)}`;
+            const container = document.getElementById('qrCodeContainer');
+            container.innerHTML = '';
+            new QRCode(container, { text: qrUrl, width: 200, height: 200 });
+            document.getElementById('qrTokenInfo').innerHTML = `掃碼後將自動登入到 ${user.role} 工作台`;
+            document.getElementById('qrModal').classList.remove('hidden');
+        } catch(e) { alert('無法顯示 QR: ' + e.message); }
+    }
+
+    document.getElementById('closeQrModal').onclick = () => document.getElementById('qrModal').classList.add('hidden');
+    document.getElementById('printQrBtn').onclick = () => {
+        const img = document.querySelector('#qrCodeContainer img');
+        if (!img) return;
+        const win = window.open('');
+        win.document.write(`
+            <html><head><title>進場 QR 碼</title></head>
+            <body style="text-align:center;"><img src="${img.src}" style="width:200px;"><p>掃碼登入</p>
+            <script>window.onload=function(){window.print();window.close();}<\/script></body></html>
+        `);
+    };
+
+    document.getElementById('filterBtn').onclick = loadUsers;
+    function logout() { localStorage.clear(); location.href = 'login.html'; }
+
+    loadUsers();
+</script>
+</body>
+</html>

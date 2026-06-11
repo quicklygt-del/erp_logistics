@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>領退料管理</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <style>
+        .btn { padding: 0.75rem 1rem; border-radius: 0.5rem; font-weight: 600; }
+        .card { background: white; border-radius: 1rem; box-shadow: 0 2px 6px rgba(0,0,0,0.1); padding: 1rem; margin-bottom: 1.5rem; }
+        .table-responsive { overflow-x: auto; }
+        @media (max-width: 640px) {
+            .btn { font-size: 0.9rem; padding: 0.6rem 0.8rem; }
+            input, select { font-size: 16px; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 p-4">
+<div class="max-w-4xl mx-auto">
+    <div class="flex justify-between items-center mb-4">
+        <h1 class="text-2xl font-bold">📦 領退料管理</h1>
+        <button onclick="location.href='worker_dashboard.html'" class="bg-gray-500 text-white px-3 py-1 rounded text-sm">← 工作台</button>
+    </div>
+
+    <!-- 新增单据卡片 -->
+    <div class="card">
+        <h2 class="text-xl font-bold mb-3">➕ 新增領/退料單</h2>
+        <div class="grid grid-cols-2 gap-3 mb-3">
+            <div>
+                <label class="block text-sm font-medium">單據類型</label>
+                <select id="transType" class="w-full border p-2 rounded">
+                    <option value="ISSUE">領料</option>
+                    <option value="RETURN">退料</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium">單據編號</label>
+                <input type="text" id="docNumber" class="w-full border p-2 rounded" placeholder="請輸入ERP單號">
+            </div>
+        </div>
+        <div class="mb-3">
+            <label class="block text-sm font-medium">領退料單位</label>
+            <select id="department" class="w-full border p-2 rounded">
+                <option value="">-- 請選擇 --</option>
+            </select>
+        </div>
+        <div class="mb-3">
+            <div class="flex flex-wrap gap-2 items-center">
+                <input type="text" id="scanMaterialCode" placeholder="掃描或輸入料號" class="border flex-1 p-2 rounded">
+                <input type="number" id="scanQty" placeholder="數量" value="1" class="border w-24 p-2 rounded">
+                <button id="addByScanBtn" class="bg-blue-600 text-white px-3 py-2 rounded">加入</button>
+                <button id="cameraBtn" class="bg-purple-600 text-white px-3 py-2 rounded">📷 掃描</button>
+            </div>
+            <div id="reader" class="hidden mt-2"></div>
+        </div>
+        <div class="table-responsive">
+            <table class="min-w-full border text-sm">
+                <thead class="bg-gray-50">
+                    <tr><th>料號</th><th>品名</th><th>規格</th><th>數量</th><th>備註</th><th>操作</th><tr>
+                </thead>
+                <tbody id="itemsTbody">
+                    <td><td colspan="6" class="text-center py-2">暫無物料</tbody>
+                </tbody>
+            </table>
+        </div>
+        <button id="submitBtn" class="btn bg-green-600 text-white w-full mt-3">✅ 提交單據</button>
+        <div id="submitMsg" class="text-sm mt-2"></div>
+    </div>
+
+    <!-- 历史记录卡片 -->
+    <div class="card">
+        <div class="flex justify-between items-center mb-3">
+            <h2 class="text-xl font-bold">📜 歷史紀錄</h2>
+            <button id="exportBtn" class="bg-green-600 text-white px-3 py-1 rounded text-sm">📎 匯出 Excel</button>
+        </div>
+        <div class="flex flex-wrap gap-2 mb-3">
+            <input type="date" id="startDate" class="border p-2 rounded">
+            <input type="date" id="endDate" class="border p-2 rounded">
+            <select id="historyType" class="border p-2 rounded">
+                <option value="">全部</option>
+                <option value="ISSUE">領料</option>
+                <option value="RETURN">退料</option>
+            </select>
+            <button id="searchBtn" class="bg-blue-600 text-white px-3 py-2 rounded">查詢</button>
+        </div>
+        <div class="table-responsive">
+            <table class="min-w-full border text-sm">
+                <thead class="bg-gray-50">
+                    <tr><th>單號</th><th>類型</th><th>單位</th><th>經手人</th><th>時間</th><th>操作</th></tr>
+                </thead>
+                <tbody id="historyTbody">
+                    <tr><td colspan="6" class="text-center py-4">載入中...</tbody>
+                </tbody>
+            </table>
+        </div>
+        <div id="historyPagination" class="flex justify-between items-center mt-3"></div>
+    </div>
+</div>
+
+<script>
+    const API_BASE = "/api/v1";
+    let token = localStorage.getItem('access_token');
+    if (!token) { alert('請先登入'); location.href = 'login.html'; }
+    let html5QrCode = null;
+    let currentItems = [];
+    let currentPage = 0, totalPages = 0, limit = 10;
+
+    async function apiFetch(url, opts = {}) {
+        opts.headers = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            ...(opts.headers || {})
+        };
+        const res = await fetch(url, opts);
+        if (res.status === 401) { alert('登入過期'); localStorage.clear(); location.href = 'login.html'; throw new Error('Unauthorized'); }
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+    }
+
+    function escapeHtml(s) { return s.replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m])); }
+
+    async function loadDepartments() {
+        try {
+            const depts = await apiFetch(`${API_BASE}/transactions/departments`);
+            const select = document.getElementById('department');
+            select.innerHTML = '<option value="">-- 請選擇 --</option>';
+            depts.forEach(d => {
+                const opt = document.createElement('option');
+                opt.value = d.name;
+                opt.textContent = d.name;
+                select.appendChild(opt);
+            });
+        } catch(e) { console.error(e); }
+    }
+
+    async function addMaterial(materialCode, quantity, remark = '') {
+        if (!materialCode) return;
+        try {
+            const mat = await apiFetch(`${API_BASE}/materials/${encodeURIComponent(materialCode)}`);
+            const existing = currentItems.find(i => i.material_code === materialCode);
+            if (existing) {
+                existing.quantity += quantity;
+            } else {
+                currentItems.push({
+                    material_code: materialCode,
+                    name: mat.name,
+                    spec: mat.spec || '',
+                    quantity: quantity,
+                    remark: remark
+                });
+            }
+            renderItemsTable();
+        } catch(e) { alert(`料號 ${materialCode} 不存在`); }
+    }
+
+    function renderItemsTable() {
+        const tbody = document.getElementById('itemsTbody');
+        if (currentItems.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-2">暫無物料</tbody>';
+            return;
+        }
+        tbody.innerHTML = currentItems.map((item, idx) => `
+            <tr>
+                <td class="p-1">${escapeHtml(item.material_code)}</td>
+                <td class="p-1">${escapeHtml(item.name)}</td>
+                <td class="p-1">${escapeHtml(item.spec)}</td>
+                <td class="p-1"><input type="number" class="item-qty w-16 border text-center" data-idx="${idx}" value="${item.quantity}"></td>
+                <td class="p-1"><input type="text" class="item-remark w-24 border" data-idx="${idx}" value="${escapeHtml(item.remark)}"></td>
+                <td class="p-1"><button class="remove-item text-red-500" data-idx="${idx}">刪除</button></td>
+            </tr>
+        `).join('');
+        document.querySelectorAll('.item-qty').forEach(inp => {
+            inp.onchange = (e) => {
+                const idx = parseInt(e.target.dataset.idx);
+                currentItems[idx].quantity = parseInt(e.target.value) || 1;
+            };
+        });
+        document.querySelectorAll('.item-remark').forEach(inp => {
+            inp.onchange = (e) => {
+                const idx = parseInt(e.target.dataset.idx);
+                currentItems[idx].remark = e.target.value;
+            };
+        });
+        document.querySelectorAll('.remove-item').forEach(btn => {
+            btn.onclick = (e) => {
+                const idx = parseInt(e.target.dataset.idx);
+                currentItems.splice(idx, 1);
+                renderItemsTable();
+            };
+        });
+    }
+
+    document.getElementById('submitBtn').onclick = async () => {
+        const docNumber = document.getElementById('docNumber').value.trim();
+        const transType = document.getElementById('transType').value;
+        const department = document.getElementById('department').value;
+        if (!docNumber) { alert('請輸入單據編號'); return; }
+        if (!department) { alert('請選擇領退料單位'); return; }
+        if (currentItems.length === 0) { alert('請至少加入一項物料'); return; }
+        const items = currentItems.map(i => ({ material_code: i.material_code, quantity: i.quantity, remark: i.remark }));
+        const body = { doc_number: docNumber, transaction_type: transType, department, items };
+        try {
+            await apiFetch(`${API_BASE}/transactions/`, { method: 'POST', body: JSON.stringify(body) });
+            alert('提交成功');
+            currentItems = [];
+            renderItemsTable();
+            document.getElementById('docNumber').value = '';
+            document.getElementById('department').value = '';
+            loadHistory();
+        } catch(e) { alert(`提交失敗: ${e.message}`); }
+    };
+
+    async function startCamera() {
+        const readerDiv = document.getElementById('reader');
+        readerDiv.classList.remove('hidden');
+        if (html5QrCode) await html5QrCode.stop();
+        html5QrCode = new Html5Qrcode("reader");
+        try {
+            await html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } },
+                (decodedText) => {
+                    html5QrCode.stop();
+                    readerDiv.classList.add('hidden');
+                    document.getElementById('scanMaterialCode').value = decodedText;
+                    const qty = parseInt(document.getElementById('scanQty').value) || 1;
+                    addMaterial(decodedText, qty);
+                    document.getElementById('scanMaterialCode').value = '';
+                    document.getElementById('scanQty').value = '1';
+                },
+                () => {}
+            );
+        } catch(err) { alert('無法啟動相機: ' + err); readerDiv.classList.add('hidden'); }
+    }
+
+    document.getElementById('cameraBtn').onclick = () => startCamera();
+    document.getElementById('addByScanBtn').onclick = () => {
+        const code = document.getElementById('scanMaterialCode').value.trim();
+        const qty = parseInt(document.getElementById('scanQty').value) || 1;
+        if (code) addMaterial(code, qty);
+        document.getElementById('scanMaterialCode').value = '';
+        document.getElementById('scanQty').value = '1';
+    };
+
+    async function loadHistory(page = 0) {
+        currentPage = page;
+        const startDate = document.getElementById('startDate').value;
+        const endDate = document.getElementById('endDate').value;
+        const transType = document.getElementById('historyType').value;
+        let url = `${API_BASE}/transactions/?limit=${limit}&offset=${page * limit}`;
+        if (startDate) url += `&start_date=${startDate}`;
+        if (endDate) url += `&end_date=${endDate}`;
+        if (transType) url += `&transaction_type=${transType}`;
+        try {
+            const data = await apiFetch(url);
+            const tbody = document.getElementById('historyTbody');
+            if (!data.data.length) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4">暫無紀錄</tbody>';
+                totalPages = 0;
+            } else {
+                tbody.innerHTML = data.data.map(t => `
+                    <tr>
+                        <td class="p-2">${escapeHtml(t.doc_number)}</td>
+                        <td class="p-2">${t.transaction_type === 'ISSUE' ? '領料' : '退料'}</td>
+                        <td class="p-2">${escapeHtml(t.department || '')}</td>
+                        <td class="p-2">${escapeHtml(t.operator)}</td>
+                        <td class="p-2">${new Date(t.created_at).toLocaleString()}</td>
+                        <td class="p-2"><button class="view-detail text-blue-500" data-doc="${escapeHtml(t.doc_number)}">明細</button></td>
+                    </tr>
+                `).join('');
+                totalPages = Math.ceil(data.total / limit);
+                document.querySelectorAll('.view-detail').forEach(btn => {
+                    btn.onclick = async () => {
+                        const doc = btn.dataset.doc;
+                        const docData = data.data.find(d => d.doc_number === doc);
+                        if (docData && docData.items.length) {
+                            let msg = `單據 ${doc} 明細:\n`;
+                            docData.items.forEach(i => {
+                                msg += `${i.material_code} x ${i.quantity} ${i.remark ? `(${i.remark})` : ''}\n`;
+                            });
+                            alert(msg);
+                        } else {
+                            alert('無明細');
+                        }
+                    };
+                });
+            }
+            renderPagination();
+        } catch(e) { alert('查詢失敗: ' + e.message); }
+    }
+
+    function renderPagination() {
+        const container = document.getElementById('historyPagination');
+        if (totalPages <= 1) { container.innerHTML = ''; return; }
+        container.innerHTML = `
+            <span>第 ${currentPage+1} / ${totalPages} 頁</span>
+            <div>
+                <button id="prevPage" ${currentPage===0 ? 'disabled' : ''} class="border px-2 py-1 rounded mr-1">上一頁</button>
+                <button id="nextPage" ${currentPage+1 >= totalPages ? 'disabled' : ''} class="border px-2 py-1 rounded">下一頁</button>
+            </div>
+        `;
+        document.getElementById('prevPage')?.addEventListener('click', () => loadHistory(currentPage-1));
+        document.getElementById('nextPage')?.addEventListener('click', () => loadHistory(currentPage+1));
+    }
+
+    document.getElementById('searchBtn').onclick = () => loadHistory(0);
+
+    // 导出 Excel 修复：使用 fetch 带 token
+    document.getElementById('exportBtn').onclick = async () => {
+        const startDate = document.getElementById('startDate').value;
+        const endDate = document.getElementById('endDate').value;
+        const transType = document.getElementById('historyType').value;
+        let url = `${API_BASE}/transactions/export?`;
+        if (startDate) url += `start_date=${startDate}&`;
+        if (endDate) url += `end_date=${endDate}&`;
+        if (transType) url += `transaction_type=${transType}`;
+        try {
+            const response = await fetch(url, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!response.ok) {
+                const error = await response.text();
+                alert('匯出失敗: ' + error);
+                return;
+            }
+            const blob = await response.blob();
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            a.download = `领退料历史_${new Date().toISOString().slice(0,10)}.xlsx`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(downloadUrl);
+        } catch(e) {
+            alert('匯出錯誤: ' + e.message);
+        }
+    };
+
+    loadDepartments();
+    loadHistory();
+</script>
+</body>
+</html>

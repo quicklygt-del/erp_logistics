@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>預警規則管理</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-6">
+<div class="max-w-7xl mx-auto">
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-3xl font-bold">⏰ 預警規則管理</h1>
+        <div class="space-x-2">
+            <a href="admin_dashboard.html" class="bg-gray-500 text-white px-3 py-1 rounded text-sm">← 返回後台</a>
+            <button onclick="logout()" class="bg-red-500 text-white px-3 py-1 rounded text-sm">登出</button>
+        </div>
+    </div>
+
+    <div class="bg-white rounded shadow p-4 mb-6">
+        <div class="flex justify-between items-center mb-3">
+            <h2 class="text-xl font-bold">📋 停留超時規則列表</h2>
+            <button id="addRuleBtn" class="bg-green-600 text-white px-4 py-2 rounded">➕ 新增規則</button>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full border text-sm">
+                <thead class="bg-gray-50">
+                    <tr><th>ID</th><th>規則名稱</th><th>節點類型</th><th>閾值(小時)</th><th>啟用狀態</th><th>操作</th></tr>
+                </thead>
+                <tbody id="rulesTbody">
+                    <tr><td colspan="6" class="text-center py-4">載入中...</tbody>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- 新增/編輯規則模態框 -->
+<div id="ruleModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+    <div class="bg-white rounded-xl p-6 w-96">
+        <h3 id="modalTitle" class="text-lg font-bold mb-3">新增規則</h3>
+        <input type="hidden" id="editRuleId">
+        <label class="block text-sm font-medium">規則名稱</label>
+        <input type="text" id="ruleName" class="border p-2 rounded w-full mb-2" placeholder="例如：待驗倉超時">
+        <label class="block text-sm font-medium">節點類型</label>
+        <select id="nodeType" class="border p-2 rounded w-full mb-2">
+            <option value="待驗倉">待驗倉</option>
+            <option value="待入庫倉">待入庫倉</option>
+            <option value="待出庫倉">待出庫倉</option>
+            <option value="包裝成品倉">包裝成品倉</option>
+            <option value="待出貨倉">待出貨倉</option>
+        </select>
+        <label class="block text-sm font-medium">閾值 (小時)</label>
+        <input type="number" id="thresholdHours" class="border p-2 rounded w-full mb-2" value="24" min="1">
+        <label class="flex items-center gap-2 mt-2">
+            <input type="checkbox" id="isActive" checked> 啟用
+        </label>
+        <div class="flex justify-end gap-2 mt-4">
+            <button id="cancelModalBtn" class="bg-gray-300 px-3 py-1 rounded">取消</button>
+            <button id="saveRuleBtn" class="bg-blue-600 text-white px-3 py-1 rounded">儲存</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const API_BASE = "/api/v1";
+    let token = localStorage.getItem('access_token');
+    if (!token) { alert('請先登入'); location.href = 'login.html'; }
+
+    async function apiFetch(url, opts = {}) {
+        opts.headers = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            ...(opts.headers || {})
+        };
+        const res = await fetch(url, opts);
+        if (res.status === 401) { alert('登入過期'); localStorage.removeItem('access_token'); location.href = 'login.html'; throw new Error('Unauthorized'); }
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+    }
+
+    function escapeHtml(s) { return String(s).replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m])); }
+
+    async function loadRules() {
+        try {
+            const rules = await apiFetch(`${API_BASE}/admin/alert-rules`);
+            const tbody = document.getElementById('rulesTbody');
+            if (!rules.length) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4">暫無規則</tbody>';
+                return;
+            }
+            tbody.innerHTML = rules.map(rule => `
+                <tr class="border-b">
+                    <td class="p-2">${rule.id}</td>
+                    <td class="p-2">${escapeHtml(rule.rule_name)}</td>
+                    <td class="p-2">${escapeHtml(rule.node_type)}</td>
+                    <td class="p-2 text-right">${rule.threshold_hours}</td>
+                    <td class="p-2">${rule.is_active ? '✅ 啟用' : '❌ 停用'}</td>
+                    <td class="p-2">
+                        <button class="edit-btn bg-yellow-500 text-white px-2 py-1 rounded text-xs" data-id="${rule.id}" data-name="${escapeHtml(rule.rule_name)}" data-node="${escapeHtml(rule.node_type)}" data-hours="${rule.threshold_hours}" data-active="${rule.is_active}">編輯</button>
+                        <button class="delete-btn bg-red-500 text-white px-2 py-1 rounded text-xs" data-id="${rule.id}" data-name="${escapeHtml(rule.rule_name)}">刪除</button>
+                    </td>
+                </tr>
+            `).join('');
+            // 綁定編輯按鈕
+            document.querySelectorAll('.edit-btn').forEach(btn => {
+                btn.onclick = () => {
+                    document.getElementById('modalTitle').innerText = '編輯規則';
+                    document.getElementById('editRuleId').value = btn.dataset.id;
+                    document.getElementById('ruleName').value = btn.dataset.name;
+                    document.getElementById('nodeType').value = btn.dataset.node;
+                    document.getElementById('thresholdHours').value = btn.dataset.hours;
+                    document.getElementById('isActive').checked = btn.dataset.active === 'true';
+                    document.getElementById('ruleModal').classList.remove('hidden');
+                };
+            });
+            // 綁定刪除按鈕
+            document.querySelectorAll('.delete-btn').forEach(btn => {
+                btn.onclick = async () => {
+                    if (!confirm(`確定刪除規則「${btn.dataset.name}」？`)) return;
+                    try {
+                        await apiFetch(`${API_BASE}/admin/alert-rules/${btn.dataset.id}`, { method: 'DELETE' });
+                        alert('刪除成功');
+                        loadRules();
+                    } catch(e) { alert('刪除失敗: ' + e.message); }
+                };
+            });
+        } catch(e) { alert('載入規則失敗: ' + e.message); }
+    }
+
+    document.getElementById('addRuleBtn').onclick = () => {
+        document.getElementById('modalTitle').innerText = '新增規則';
+        document.getElementById('editRuleId').value = '';
+        document.getElementById('ruleName').value = '';
+        document.getElementById('nodeType').value = '待驗倉';
+        document.getElementById('thresholdHours').value = 24;
+        document.getElementById('isActive').checked = true;
+        document.getElementById('ruleModal').classList.remove('hidden');
+    };
+
+    document.getElementById('saveRuleBtn').onclick = async () => {
+        const ruleId = document.getElementById('editRuleId').value;
+        const ruleName = document.getElementById('ruleName').value.trim();
+        const nodeType = document.getElementById('nodeType').value;
+        const thresholdHours = parseInt(document.getElementById('thresholdHours').value);
+        const isActive = document.getElementById('isActive').checked;
+        if (!ruleName) { alert('請輸入規則名稱'); return; }
+        if (isNaN(thresholdHours) || thresholdHours <= 0) { alert('請輸入有效小時數'); return; }
+        const body = { rule_name: ruleName, node_type: nodeType, threshold_hours: thresholdHours, is_active: isActive };
+        try {
+            if (ruleId) {
+                await apiFetch(`${API_BASE}/admin/alert-rules/${ruleId}`, { method: 'PATCH', body: JSON.stringify(body) });
+                alert('更新成功');
+            } else {
+                await apiFetch(`${API_BASE}/admin/alert-rules`, { method: 'POST', body: JSON.stringify(body) });
+                alert('新增成功');
+            }
+            document.getElementById('ruleModal').classList.add('hidden');
+            loadRules();
+        } catch(e) { alert('操作失敗: ' + e.message); }
+    };
+
+    document.getElementById('cancelModalBtn').onclick = () => {
+        document.getElementById('ruleModal').classList.add('hidden');
+    };
+
+    function logout() { localStorage.clear(); location.href = 'login.html'; }
+
+    loadRules();
+</script>
+</body>
+</html>

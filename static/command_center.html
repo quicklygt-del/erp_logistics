@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>指揮塔 - 任務監控</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .card-hover { transition: transform 0.2s, box-shadow 0.2s; }
+        .card-hover:hover { transform: translateY(-4px); box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
+        .sticky-header th { position: sticky; top: 0; background-color: #f9fafb; }
+        /* 统一样式：表格边框和固定布局 */
+        .data-table {
+            table-layout: fixed;
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .data-table th, .data-table td {
+            border: 1px solid #e5e7eb;
+            padding: 0.5rem;
+            text-align: left;
+            vertical-align: top;
+            word-break: break-word;
+        }
+        .data-table th {
+            background-color: #f9fafb;
+            font-weight: 600;
+        }
+        /* 仓管员负载表列宽比例 */
+        .worker-table th:nth-child(1) { width: 25%; }  /* 倉管員 */
+        .worker-table th:nth-child(2) { width: 10%; }  /* 入庫 */
+        .worker-table th:nth-child(3) { width: 10%; }  /* 檢貨 */
+        .worker-table th:nth-child(4) { width: 10%; }  /* 盤點 */
+        .worker-table th:nth-child(5) { width: 10%; }  /* 合計 */
+        .worker-table th:nth-child(6) { width: 15%; }  /* 操作 */
+        /* 库存预警表列宽 */
+        .stock-table th:nth-child(1) { width: 15%; }  /* 料號 */
+        .stock-table th:nth-child(2) { width: 25%; }  /* 品名 */
+        .stock-table th:nth-child(3) { width: 15%; }  /* 主儲倉庫存 */
+        .stock-table th:nth-child(4) { width: 15%; }  /* 安全庫存 */
+        .stock-table th:nth-child(5) { width: 20%; }  /* 儲位 */
+        /* 超时预警表列宽 */
+        .timeout-table th:nth-child(1) { width: 40%; }  /* 單據/箱號 */
+        .timeout-table th:nth-child(2) { width: 30%; }  /* 節點 */
+        .timeout-table th:nth-child(3) { width: 20%; }  /* 已停留(小時) */
+    </style>
+</head>
+<body class="bg-gray-100 p-6">
+<div class="max-w-7xl mx-auto">
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-3xl font-bold">🏭 指揮塔</h1>
+        <div class="space-x-2">
+            <a href="materials_dashboard.html" class="bg-blue-500 text-white px-3 py-1 rounded text-sm">📦 物料主檔</a>
+            <a href="stock_query.html" class="bg-blue-500 text-white px-3 py-1 rounded text-sm">🔍 庫存查詢</a>
+            <a href="history.html" class="bg-blue-500 text-white px-3 py-1 rounded text-sm">📜 歷史紀錄</a>
+            <a href="reprint_qr.html" class="bg-blue-500 text-white px-3 py-1 rounded text-sm">🖨️ QR列印</a>
+            <button onclick="logout()" class="bg-red-500 text-white px-3 py-1 rounded text-sm">登出</button>
+        </div>
+    </div>
+    <p class="text-gray-600 mb-6">任務監控與派工看板</p>
+    <div id="statusBanner" class="hidden mb-4 p-3 rounded text-sm"></div>
+
+    <!-- 三任務卡片 -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div class="bg-white rounded-xl shadow p-5 card-hover cursor-pointer" onclick="location.href='inbound_manage.html'">
+            <div class="flex items-center justify-between">
+                <h2 class="text-xl font-bold text-blue-600">📥 入庫任務</h2>
+                <span id="inboundCount" class="text-3xl font-bold text-gray-700">-</span>
+            </div>
+            <p class="text-gray-500 mt-2">待指派/進行中</p>
+            <div class="mt-3 text-sm text-gray-400">點擊進入派工</div>
+        </div>
+        <div class="bg-white rounded-xl shadow p-5 card-hover cursor-pointer" onclick="location.href='pick_management.html'">
+            <div class="flex items-center justify-between">
+                <h2 class="text-xl font-bold text-green-600">📦 檢貨任務</h2>
+                <span id="pickingCount" class="text-3xl font-bold text-gray-700">-</span>
+            </div>
+            <p class="text-gray-500 mt-2">待指派/進行中</p>
+            <div class="mt-3 text-sm text-gray-400">點擊進入派工</div>
+        </div>
+        <div class="bg-white rounded-xl shadow p-5 card-hover cursor-pointer" onclick="location.href='manage_tasks.html'">
+            <div class="flex items-center justify-between">
+                <h2 class="text-xl font-bold text-purple-600">📋 盤點任務</h2>
+                <span id="stocktakeCount" class="text-3xl font-bold text-gray-700">-</span>
+            </div>
+            <p class="text-gray-500 mt-2">待指派/進行中</p>
+            <div class="mt-3 text-sm text-gray-400">點擊進入派工</div>
+        </div>
+    </div>
+
+    <!-- 倉管員當前負載表 -->
+    <div class="bg-white rounded-xl shadow p-5 mb-8">
+        <h2 class="text-xl font-bold mb-3">👥 倉管員當前負載</h2>
+        <div class="overflow-x-auto">
+            <table class="data-table worker-table">
+                <thead>
+                    <tr>
+                        <th>倉管員</th>
+                        <th>入庫</th>
+                        <th>檢貨</th>
+                        <th>盤點</th>
+                        <th>合計</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="workerLoadTbody">
+                    <tr><td colspan="6" class="text-center">載入中...</td><\/tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 庫存預警卡片（簡要） -->
+    <div class="bg-white rounded-xl shadow p-5 mb-8">
+        <h2 class="text-xl font-bold mb-3">⚠️ 庫存預警 (低於安全庫存)</h2>
+        <div class="overflow-x-auto max-h-64 overflow-y-auto">
+            <table class="data-table stock-table">
+                <thead class="sticky-header">
+                    <tr>
+                        <th>料號</th>
+                        <th>品名</th>
+                        <th>主儲倉庫存</th>
+                        <th>安全庫存</th>
+                        <th>儲位</th>
+                    </tr>
+                </thead>
+                <tbody id="lowStockPreviewTbody">
+                    <tr><td colspan="5" class="text-center">載入中...</td><\/tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 停留超時預警卡片（簡要） -->
+    <div class="bg-white rounded-xl shadow p-5">
+        <h2 class="text-xl font-bold mb-3">⏰ 停留超時預警</h2>
+        <div class="overflow-x-auto max-h-64 overflow-y-auto">
+            <table class="data-table timeout-table">
+                <thead class="sticky-header">
+                    <tr>
+                        <th>單據/箱號</th>
+                        <th>節點</th>
+                        <th>已停留(小時)</th>
+                    </tr>
+                </thead>
+                <tbody id="timeoutPreviewTbody">
+                    <tr><td colspan="3" class="text-center">載入中...</td><\/tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    const API_BASE = "/api/v1";
+    const ALLOWED_ROLES = ['admin', 'warehouse'];
+    let authRedirecting = false;
+
+    function getToken() {
+        return localStorage.getItem('access_token');
+    }
+
+    function checkAccess() {
+        const token = getToken();
+        if (!token) {
+            alert('請先登入');
+            location.href = 'login.html';
+            return false;
+        }
+        const role = localStorage.getItem('user_role');
+        if (role && !ALLOWED_ROLES.includes(role)) {
+            alert('此頁面僅限倉儲主管或管理員使用，請重新登入');
+            location.href = 'login.html';
+            return false;
+        }
+        return true;
+    }
+
+    function showBanner(message, type = 'error') {
+        const banner = document.getElementById('statusBanner');
+        banner.className = type === 'error'
+            ? 'mb-4 p-3 rounded text-sm bg-red-100 text-red-800 border border-red-200'
+            : 'mb-4 p-3 rounded text-sm bg-yellow-100 text-yellow-800 border border-yellow-200';
+        banner.textContent = message;
+        banner.classList.remove('hidden');
+    }
+
+    function hideBanner() {
+        document.getElementById('statusBanner').classList.add('hidden');
+    }
+
+    function parseApiError(text) {
+        try {
+            const j = JSON.parse(text);
+            return j.detail || text;
+        } catch {
+            return text || '未知錯誤';
+        }
+    }
+
+    async function apiFetch(url, opts = {}) {
+        const token = getToken();
+        if (!token) {
+            if (!authRedirecting) {
+                authRedirecting = true;
+                alert('請先登入');
+                localStorage.removeItem('access_token');
+                location.href = 'login.html';
+            }
+            throw new Error('Unauthorized');
+        }
+        opts.headers = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            ...(opts.headers || {})
+        };
+        let res;
+        try {
+            res = await fetch(url, opts);
+        } catch (e) {
+            const err = new Error('無法連線至 API 伺服器，請確認 uvicorn 已啟動');
+            err.code = 'NETWORK';
+            throw err;
+        }
+        if (res.status === 401) {
+            if (!authRedirecting) {
+                authRedirecting = true;
+                alert('登入已過期，請重新登入');
+                localStorage.removeItem('access_token');
+                location.href = 'login.html';
+            }
+            throw new Error('Unauthorized');
+        }
+        if (res.status === 403) {
+            const err = new Error(parseApiError(await res.text()));
+            err.code = 403;
+            throw err;
+        }
+        if (!res.ok) {
+            const err = new Error(parseApiError(await res.text()));
+            err.code = res.status;
+            throw err;
+        }
+        return res.json();
+    }
+
+    function escapeHtml(s) {
+        if (s == null) return '';
+        return String(s).replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m]));
+    }
+
+    async function loadSummary(silent = false) {
+        try {
+            const data = await apiFetch(`${API_BASE}/dashboard/task-summary`);
+            hideBanner();
+            document.getElementById('inboundCount').innerText = data.inbound_pending || 0;
+            document.getElementById('pickingCount').innerText = data.picking_pending || 0;
+            document.getElementById('stocktakeCount').innerText = data.stocktake_pending || 0;
+            const tbody = document.getElementById('workerLoadTbody');
+            if (!data.worker_load || data.worker_load.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4">暫無指派任務<\/td><\/tr>';
+                return;
+            }
+            tbody.innerHTML = data.worker_load.map(w => `
+                <tr>
+                    <td class="p-2">${escapeHtml(w.assigned_to)}<\/td>
+                    <td class="p-2 text-center">${w.inbound_count || 0}<\/td>
+                    <td class="p-2 text-center">${w.picking_count || 0}<\/td>
+                    <td class="p-2 text-center">${w.stocktake_count || 0}<\/td>
+                    <td class="p-2 text-center">${w.task_count || 0}<\/td>
+                    <td class="p-2 text-center"><button class="view-tasks bg-blue-500 text-white px-2 py-1 rounded text-xs" data-worker="${escapeHtml(w.assigned_to)}">查看任務<\/button><\/td>
+                <\/tr>
+            `).join('');
+            document.querySelectorAll('.view-tasks').forEach(btn => {
+                btn.onclick = () => {
+                    alert(`功能開發中：可跳轉至 ${btn.dataset.worker} 的任務清單`);
+                };
+            });
+        } catch (e) {
+            console.error(e);
+            if (e.message === 'Unauthorized') return;
+            const msg = e.code === 403
+                ? '權限不足：請使用倉儲主管 (warehouse) 或管理員 (admin) 帳號登入'
+                : (e.code === 'NETWORK' ? e.message : `載入任務摘要失敗：${e.message}`);
+            showBanner(msg);
+            if (!silent) alert(msg);
+        }
+    }
+
+    async function loadAlerts() {
+        const role = localStorage.getItem('user_role');
+        if (role && !ALLOWED_ROLES.includes(role)) return;
+        try {
+            const data = await apiFetch(`${API_BASE}/admin/dashboard/overview`);
+            const lowStock = data.low_stock_items ? data.low_stock_items.slice(0, 5) : [];
+            const lowStockTbody = document.getElementById('lowStockPreviewTbody');
+            if (lowStock.length === 0) {
+                lowStockTbody.innerHTML = '<tr><td colspan="5" class="text-center py-4">✅ 暫無低於安全庫存物料<\/td><\/tr>';
+            } else {
+                lowStockTbody.innerHTML = lowStock.map(item => `
+                    <tr>
+                        <td class="p-2">${escapeHtml(item.material_code)}<\/td>
+                        <td class="p-2">${escapeHtml(item.name)}<\/td>
+                        <td class="p-2 text-center">${item.main_stock}<\/td>
+                        <td class="p-2 text-center">${item.safety_stock}<\/td>
+                        <td class="p-2">${escapeHtml(item.location || '')}<\/td>
+                    <\/tr>
+                `).join('');
+            }
+            const timeout = data.timeout_alerts ? data.timeout_alerts.slice(0, 5) : [];
+            const timeoutTbody = document.getElementById('timeoutPreviewTbody');
+            if (timeout.length === 0) {
+                timeoutTbody.innerHTML = '<tr><td colspan="3" class="text-center py-4">✅ 暫無超時停留單據<\/td><\/tr>';
+            } else {
+                timeoutTbody.innerHTML = timeout.map(alert => `
+                    <tr>
+                        <td class="p-2">${escapeHtml(alert.doc_number || alert.box_number || '-')}<\/td>
+                        <td class="p-2">${escapeHtml(alert.node_type)}<\/td>
+                        <td class="p-2 text-center">${alert.waiting_hours}<\/td>
+                    <\/tr>
+                `).join('');
+            }
+        } catch (e) {
+            console.error('載入預警失敗', e);
+            if (e.message !== 'Unauthorized') {
+                document.getElementById('lowStockPreviewTbody').innerHTML =
+                    '<tr><td colspan="5" class="text-center py-4 text-gray-400">預警資料載入失敗<\/td><\/tr>';
+                document.getElementById('timeoutPreviewTbody').innerHTML =
+                    '<tr><td colspan="3" class="text-center py-4 text-gray-400">預警資料載入失敗<\/td><\/tr>';
+            }
+        }
+    }
+
+    function logout() { localStorage.clear(); location.href = 'login.html'; }
+
+    if (checkAccess()) {
+        loadSummary();
+        loadAlerts();
+        setInterval(() => { loadSummary(true); loadAlerts(); }, 30000);
+    }
+</script>
+</body>
+</html>

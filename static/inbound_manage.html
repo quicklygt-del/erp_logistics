@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>入庫任務管理 - 主管</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .table-fixed { min-width: 800px; white-space: nowrap; }
+        .table-fixed th, .table-fixed td { padding: 0.5rem; border-bottom: 1px solid #e5e7eb; }
+        .sticky-header { position: sticky; top: 0; background-color: #f9fafb; z-index: 10; }
+    </style>
+</head>
+<body class="bg-gray-100 p-6">
+<div class="max-w-7xl mx-auto">
+    <div class="flex justify-between items-center mb-4">
+        <h1 class="text-2xl font-bold">📥 入庫任務管理</h1>
+        <button onclick="location.href='command_center.html'" class="bg-gray-500 text-white px-3 py-1 rounded">← 返回指揮塔</button>
+    </div>
+
+    <div class="bg-white rounded shadow p-4 mb-4">
+        <div class="flex justify-between items-center mb-3">
+            <h2 class="text-lg font-semibold">📦 待入庫物料（檢驗完成）</h2>
+            <button id="refreshBtn" class="bg-gray-600 text-white px-3 py-1 rounded">刷新</button>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full border text-sm table-fixed">
+                <thead class="bg-gray-50 sticky-header">
+                    <tr>
+                        <th class="px-2 py-2">採購單號</th>
+                        <th class="px-2 py-2">料號</th>
+                        <th class="px-2 py-2">品名</th>
+                        <th class="px-2 py-2">規格</th>
+                        <th class="px-2 py-2">待入庫數量</th>
+                        <th class="px-2 py-2">指派給</th>
+                        <th class="px-2 py-2">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="tasksTbody">
+                    <tr><td colspan="7" class="text-center py-4">載入中...</tbody>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 指派模態框 -->
+    <div id="assignModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="bg-white rounded-xl p-6 w-96">
+            <h3 class="text-lg font-bold mb-3">指派倉管員</h3>
+            <label class="block text-sm font-medium">倉管員</label>
+            <select id="assignWorkerSelect" class="border p-2 rounded w-full mb-4">
+                <option value="">-- 請選擇 --</option>
+            </select>
+            <div class="flex justify-end gap-2">
+                <button id="cancelAssignBtn" class="bg-gray-300 px-3 py-1 rounded">取消</button>
+                <button id="confirmAssignBtn" class="bg-blue-600 text-white px-3 py-1 rounded">確認指派</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const API_BASE = "/api/v1";
+    const token = localStorage.getItem('access_token');
+    if (!token) { alert('請先登入'); location.href = 'login.html'; }
+
+    let currentAssignItem = null;
+    let userMap = new Map(); // 存储 username -> { full_name, username }
+
+    async function apiFetch(url, opts = {}) {
+        opts.headers = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            ...(opts.headers || {})
+        };
+        const res = await fetch(url, opts);
+        if (res.status === 401) {
+            alert('登入過期，請重新登入');
+            localStorage.removeItem('access_token');
+            location.href = 'login.html';
+            throw new Error('Unauthorized');
+        }
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+    }
+
+    function escapeHtml(s) {
+        if (s == null) return '';
+        return String(s).replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m]));
+    }
+
+    // 加载仓管员列表，建立用户名到中文名的映射
+    async function loadUserMap() {
+        try {
+            const workers = await apiFetch(`${API_BASE}/admin/users/by-role/operator`);
+            workers.forEach(w => {
+                userMap.set(w.username, { full_name: w.full_name || w.username, username: w.username });
+            });
+        } catch(e) {
+            console.error('載入用戶映射失敗', e);
+            // 后备硬编码
+            const fallback = [
+                { username: 'warehouse01', full_name: '倉管主管' },
+                { username: 'zhangsan', full_name: '張三' },
+                { username: 'lidatong', full_name: '李大同' },
+                { username: 'wangtian', full_name: '王添' }
+            ];
+            fallback.forEach(w => userMap.set(w.username, { full_name: w.full_name, username: w.username }));
+        }
+    }
+
+    // 获取用户显示名称
+    function getUserDisplayName(username) {
+        if (!username) return '未指派';
+        const user = userMap.get(username);
+        return user ? user.full_name : username;
+    }
+
+    async function loadPendingInbound() {
+        try {
+            const items = await apiFetch(`${API_BASE}/documents/pending-inbound`);
+            const tbody = document.getElementById('tasksTbody');
+            if (!items.length) {
+                tbody.innerHTML = '</tr><td colspan="7" class="text-center py-4">暫無待入庫物料</tbody>';
+                return;
+            }
+            tbody.innerHTML = items.map(item => {
+                const assignedTo = item.assigned_to || '';
+                const assignedName = getUserDisplayName(assignedTo);
+                const taskId = item.task_id;
+                const hasTask = !!taskId;
+                return `
+                    <tr data-doc="${escapeHtml(item.doc_number)}" data-code="${escapeHtml(item.material_code)}" data-qty="${item.qty}" data-task-id="${taskId || ''}">
+                        <td class="p-2">${escapeHtml(item.doc_number)}</td>
+                        <td class="p-2">${escapeHtml(item.material_code)}</td>
+                        <td class="p-2">${escapeHtml(item.material_name)}</td>
+                        <td class="p-2">${escapeHtml(item.spec)}</td>
+                        <td class="p-2 text-right">${item.qty}</td>
+                        <td class="p-2">${hasTask ? escapeHtml(assignedName) : '未指派'}</td>
+                        <td class="p-2">
+                            ${hasTask ? `<button class="reassign-btn bg-blue-500 text-white px-2 py-1 rounded text-xs" data-doc="${escapeHtml(item.doc_number)}" data-code="${escapeHtml(item.material_code)}" data-qty="${item.qty}" data-task-id="${taskId}">重新指派</button>` : `<button class="assign-single bg-yellow-500 text-white px-2 py-1 rounded text-xs" data-doc="${escapeHtml(item.doc_number)}" data-code="${escapeHtml(item.material_code)}" data-qty="${item.qty}">指派</button>`}
+                        </td>
+                     </>
+                `;
+            }).join('');
+            // 绑定首次指派按钮
+            document.querySelectorAll('.assign-single').forEach(btn => {
+                btn.onclick = () => {
+                    currentAssignItem = {
+                        doc_number: btn.dataset.doc,
+                        material_code: btn.dataset.code,
+                        qty: parseInt(btn.dataset.qty),
+                        task_id: null
+                    };
+                    showAssignModal();
+                };
+            });
+            // 绑定重新指派按钮
+            document.querySelectorAll('.reassign-btn').forEach(btn => {
+                btn.onclick = () => {
+                    currentAssignItem = {
+                        doc_number: btn.dataset.doc,
+                        material_code: btn.dataset.code,
+                        qty: parseInt(btn.dataset.qty),
+                        task_id: parseInt(btn.dataset.taskId)
+                    };
+                    showAssignModal();
+                };
+            });
+        } catch(e) {
+            console.error(e);
+            alert('載入失敗: ' + e.message);
+        }
+    }
+
+    async function showAssignModal() {
+        // 确保下拉框有中文选项
+        const select = document.getElementById('assignWorkerSelect');
+        if (select.options.length <= 1) {
+            try {
+                const workers = await apiFetch(`${API_BASE}/admin/users/by-role/operator`);
+                select.innerHTML = '<option value="">-- 請選擇 --</option>';
+                workers.forEach(w => {
+                    const opt = document.createElement('option');
+                    opt.value = w.username;
+                    opt.textContent = w.full_name ? `${w.full_name} (${w.username})` : w.username;
+                    select.appendChild(opt);
+                });
+            } catch(e) {
+                console.error(e);
+                select.innerHTML = '<option value="">-- 請選擇 --</option>';
+                const fallback = ['warehouse01', 'zhangsan', 'lidatong', 'wangtian'];
+                fallback.forEach(w => {
+                    const opt = document.createElement('option');
+                    opt.value = w;
+                    opt.textContent = w;
+                    select.appendChild(opt);
+                });
+            }
+        }
+        document.getElementById('assignModal').classList.remove('hidden');
+    }
+
+    document.getElementById('confirmAssignBtn').onclick = async () => {
+        const assignedTo = document.getElementById('assignWorkerSelect').value;
+        if (!assignedTo) { alert('請選擇倉管員'); return; }
+        if (!currentAssignItem) return;
+        const { doc_number, material_code, qty, task_id } = currentAssignItem;
+        try {
+            let finalTaskId = task_id;
+            if (!finalTaskId) {
+                const createRes = await apiFetch(`${API_BASE}/inventory/inbound-tasks/create-from-doc`, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        doc_number: doc_number,
+                        items: [{ material_code: material_code, received_qty: qty }]
+                    })
+                });
+                if (!createRes.success) throw new Error('創建任務失敗');
+                finalTaskId = createRes.task_ids[0];
+            }
+            await apiFetch(`${API_BASE}/inventory/inbound-tasks/assign`, {
+                method: 'PATCH',
+                body: JSON.stringify({ task_id: finalTaskId, assigned_to: assignedTo })
+            });
+            alert('指派成功');
+            document.getElementById('assignModal').classList.add('hidden');
+            // 重新加载列表，刷新显示
+            await loadUserMap();   // 确保最新映射
+            loadPendingInbound();
+        } catch(e) {
+            alert('指派失敗: ' + e.message);
+        }
+    };
+
+    document.getElementById('cancelAssignBtn').onclick = () => {
+        document.getElementById('assignModal').classList.add('hidden');
+        currentAssignItem = null;
+    };
+    document.getElementById('refreshBtn').onclick = () => {
+        loadUserMap().then(() => loadPendingInbound());
+    };
+
+    // 初始化
+    loadUserMap().then(() => loadPendingInbound());
+</script>
+</body>
+</html>

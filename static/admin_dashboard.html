@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理後台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .stat-card { transition: all 0.2s; }
+        .stat-card:hover { transform: translateY(-4px); box-shadow: 0 10px 20px rgba(0,0,0,0.1); }
+        .alert-row { background-color: #fff3cd; }
+        .alert-row:hover { background-color: #ffe8a1; }
+        /* 统一样式：表格边框和固定布局 */
+        .data-table {
+            table-layout: fixed;
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .data-table th, .data-table td {
+            border: 1px solid #e5e7eb;
+            padding: 0.5rem;
+            text-align: left;
+            vertical-align: top;
+            word-break: break-word;
+        }
+        .data-table th {
+            background-color: #f9fafb;
+            font-weight: 600;
+        }
+        /* 库存预警表（8列）列宽比例 */
+        .stock-table th:nth-child(1) { width: 10%; }  /* 料號 */
+        .stock-table th:nth-child(2) { width: 12%; }  /* 品名 */
+        .stock-table th:nth-child(3) { width: 10%; }  /* 規格 */
+        .stock-table th:nth-child(4) { width: 10%; }  /* 主儲倉庫存 */
+        .stock-table th:nth-child(5) { width: 10%; }  /* 待入庫量 */
+        .stock-table th:nth-child(6) { width: 10%; }  /* 可用總量 */
+        .stock-table th:nth-child(7) { width: 10%; }  /* 安全庫存 */
+        .stock-table th:nth-child(8) { width: 15%; }  /* 儲位 */
+        /* 超时预警表（7列）列宽比例 */
+        .timeout-table th:nth-child(1) { width: 12%; }  /* 規則 */
+        .timeout-table th:nth-child(2) { width: 10%; }  /* 節點 */
+        .timeout-table th:nth-child(3) { width: 15%; }  /* 單據/箱號 */
+        .timeout-table th:nth-child(4) { width: 10%; }  /* 類型 */
+        .timeout-table th:nth-child(5) { width: 15%; }  /* 停留位置 */
+        .timeout-table th:nth-child(6) { width: 20%; }  /* 到達時間 */
+        .timeout-table th:nth-child(7) { width: 10%; }  /* 已停留(小時) */
+    </style>
+</head>
+<body class="bg-gray-100 p-6">
+<div class="max-w-7xl mx-auto">
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-3xl font-bold">⚙️ 管理後台</h1>
+        <div class="space-x-2">
+            <a href="command_center.html" class="bg-blue-500 text-white px-3 py-1 rounded text-sm">🏭 前往指揮塔</a>
+            <a href="user_management.html" class="bg-green-500 text-white px-3 py-1 rounded text-sm">👥 用戶管理</a>
+            <a href="rule_management.html" class="bg-purple-500 text-white px-3 py-1 rounded text-sm">⚙️ 規則管理</a>
+            <button onclick="logout()" class="bg-red-500 text-white px-3 py-1 rounded text-sm">登出</button>
+        </div>
+    </div>
+
+    <!-- 庫存預警表格（基於安全庫存） -->
+    <div class="bg-white rounded-xl shadow p-5 mb-8">
+        <h2 class="text-xl font-bold mb-3">⚠️ 庫存預警 (低於安全庫存)</h2>
+        <div class="overflow-x-auto max-h-96 overflow-y-auto">
+            <table class="data-table stock-table">
+                <thead class="sticky top-0">
+                    <tr>
+                        <th>料號</th><th>品名</th><th>規格</th><th>主儲倉庫存</th>
+                        <th>待入庫量</th><th>可用總量</th><th>安全庫存</th><th>儲位</th>
+                    </tr>
+                </thead>
+                <tbody id="lowStockTbody">
+                    <tr><td colspan="8" class="text-center py-4">載入中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 超時預警表格 -->
+    <div class="bg-white rounded-xl shadow p-5 mb-8">
+        <h2 class="text-xl font-bold mb-3">⏰ 停留超時預警</h2>
+        <div class="overflow-x-auto max-h-96 overflow-y-auto">
+            <table class="data-table timeout-table">
+                <thead class="sticky top-0">
+                    <tr>
+                        <th>規則</th><th>節點</th><th>單據/箱號</th><th>類型</th>
+                        <th>停留位置</th><th>到達時間</th><th>已停留(小時)</th>
+                    </tr>
+                </thead>
+                <tbody id="timeoutTbody">
+                    <tr><td colspan="7" class="text-center py-4">載入中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 系統狀態卡片 -->
+    <div class="bg-white rounded-xl shadow p-5">
+        <h2 class="text-xl font-bold mb-3">🖥️ 系統狀態</h2>
+        <div class="flex gap-6">
+            <div><span class="font-medium">API 服務:</span> <span id="apiStatus" class="ml-2 px-2 py-1 rounded text-sm"></span></div>
+            <div><span class="font-medium">資料庫:</span> <span id="dbStatus" class="ml-2 px-2 py-1 rounded text-sm"></span></div>
+            <div><span class="font-medium">伺服器時間:</span> <span id="serverTime" class="ml-2 text-gray-600"></span></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const API_BASE = "/api/v1";
+    let token = localStorage.getItem('access_token');
+    if (!token) { alert('請先登入'); location.href = 'login.html'; }
+
+    async function apiFetch(url, opts = {}) {
+        opts.headers = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            ...(opts.headers || {})
+        };
+        const res = await fetch(url, opts);
+        if (res.status === 401) { alert('登入過期'); localStorage.removeItem('access_token'); location.href = 'login.html'; throw new Error('Unauthorized'); }
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+    }
+
+    function escapeHtml(s) { return String(s).replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m])); }
+
+    async function loadOverview() {
+        try {
+            const data = await apiFetch(`${API_BASE}/admin/dashboard/overview`);
+
+            // 庫存預警
+            const lowStockTbody = document.getElementById('lowStockTbody');
+            if (!data.low_stock_items.length) {
+                lowStockTbody.innerHTML = '<tr><td colspan="8" class="text-center py-4">✅ 暫無低於安全庫存物料</tbody>';
+            } else {
+                lowStockTbody.innerHTML = data.low_stock_items.map(item => {
+                    const mainStock = Number(item.main_stock) || 0;
+                    const pendingInbound = Number(item.pending_inbound_qty) || 0;
+                    const availableTotal = mainStock + pendingInbound;
+                    return `
+                        <tr>
+                            <td class="p-2">${escapeHtml(item.material_code)}</td>
+                            <td class="p-2">${escapeHtml(item.name)}</td>
+                            <td class="p-2">${escapeHtml(item.spec || '')}</td>
+                            <td class="p-2 text-right">${mainStock}</td>
+                            <td class="p-2 text-right">${pendingInbound}</td>
+                            <td class="p-2 text-right">${availableTotal}</td>
+                            <td class="p-2 text-right">${item.safety_stock !== undefined ? item.safety_stock : '-'}</td>
+                            <td class="p-2">${escapeHtml(item.location || '')}</td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+
+            // 超時預警
+            const timeoutTbody = document.getElementById('timeoutTbody');
+            if (!data.timeout_alerts.length) {
+                timeoutTbody.innerHTML = '<td><td colspan="7" class="text-center py-4">✅ 暫無超時停留單據</tbody>';
+            } else {
+                timeoutTbody.innerHTML = data.timeout_alerts.map(alert => `
+                    <tr class="alert-row">
+                        <td class="p-2">${escapeHtml(alert.rule_name)}</td>
+                        <td class="p-2">${escapeHtml(alert.node_type)}</td>
+                        <td class="p-2">${escapeHtml(alert.doc_number || alert.box_number || '-')}</td>
+                        <td class="p-2">${escapeHtml(alert.doc_type || '箱子')}</td>
+                        <td class="p-2">${escapeHtml(alert.current_site)}</td>
+                        <td class="p-2">${new Date(alert.created_at).toLocaleString()}</td>
+                        <td class="p-2">${alert.waiting_hours}</td>
+                    </tr>
+                `).join('');
+            }
+
+            // 系統狀態
+            const sys = data.system_status;
+            const apiSpan = document.getElementById('apiStatus');
+            apiSpan.innerText = sys.api === 'healthy' ? '正常' : '降級';
+            apiSpan.className = sys.api === 'healthy' ? 'bg-green-100 text-green-800 px-2 py-1 rounded' : 'bg-red-100 text-red-800 px-2 py-1 rounded';
+            const dbSpan = document.getElementById('dbStatus');
+            dbSpan.innerText = sys.database === 'connected' ? '已連接' : '斷開';
+            dbSpan.className = sys.database === 'connected' ? 'bg-green-100 text-green-800 px-2 py-1 rounded' : 'bg-red-100 text-red-800 px-2 py-1 rounded';
+            document.getElementById('serverTime').innerText = new Date(sys.timestamp).toLocaleString();
+        } catch (e) {
+            console.error(e);
+            alert('載入概覽失敗: ' + e.message);
+        }
+    }
+
+    function logout() { localStorage.clear(); location.href = 'login.html'; }
+
+    loadOverview();
+    // 每30秒自动刷新
+    setInterval(loadOverview, 30000);
+</script>
+</body>
+</html>

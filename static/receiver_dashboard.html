@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>收發工作台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        .tab-btn.active { background-color: #2563eb !important; color: white !important; }
+    </style>
+</head>
+<body class="bg-gray-100 p-4">
+<div class="max-w-7xl mx-auto">
+    <div class="flex justify-between items-center mb-4">
+        <h1 class="text-2xl font-bold">📦 收發工作台</h1>
+        <div class="space-x-2">
+            <a href="stock_query.html" class="bg-blue-500 text-white px-3 py-2 rounded text-sm">庫存查詢</a>
+            <a href="history.html" class="bg-blue-500 text-white px-3 py-2 rounded text-sm">歷史紀錄</a>
+            <a href="reprint_qr.html" class="bg-blue-500 text-white px-3 py-2 rounded text-sm">QR列印</a>
+            <button onclick="logout()" class="bg-red-500 text-white px-3 py-2 rounded text-sm">登出</button>
+        </div>
+    </div>
+
+    <!-- 頁籤切換按鈕 -->
+    <div class="flex flex-wrap gap-2 mb-4 border-b pb-2">
+        <button id="tabReceiveBtn" class="tab-btn px-4 py-2 rounded-t-lg bg-gray-200">📥 進貨收領</button>
+        <button id="tabReturnBtn" class="tab-btn px-4 py-2 rounded-t-lg bg-gray-200">↩️ 待退貨</button>
+        <button id="tabShipBtn" class="tab-btn px-4 py-2 rounded-t-lg bg-gray-200">📤 寄件出貨</button>
+    </div>
+
+    <!-- 進貨收領面板 -->
+    <div id="receivePanel" class="bg-white rounded shadow p-4 mb-6">
+        <h2 class="text-xl font-bold mb-3">📥 進貨收領</h2>
+        <div class="flex flex-wrap gap-2 mb-3">
+            <input type="text" id="receiveDocNo" placeholder="單據編號" class="border flex-1 p-3 rounded">
+        </div>
+        <div class="flex flex-wrap gap-2 mb-3">
+            <input type="text" id="manualMaterialCode" placeholder="料號" class="border flex-1 p-3 rounded">
+            <input type="number" id="manualQty" placeholder="數量" value="1" class="border w-24 p-3 rounded">
+            <button id="addManualItemBtn" class="bg-blue-600 text-white px-4 py-2 rounded">加入</button>
+            <button id="scanMaterialBtn" class="bg-purple-600 text-white px-4 py-2 rounded">📷掃描</button>
+        </div>
+        <h3 class="font-semibold">本次收料 (<span id="receiveItemCount">0</span>)</h3>
+        <div class="overflow-x-auto">
+            <table class="min-w-full border text-sm">
+                <thead><tr><th>料號</th><th>品名</th><th>數量</th><th>操作</th></tr></thead>
+                <tbody id="receiveItemList"></tbody>
+            </table>
+        </div>
+        <button id="confirmReceiveBtn" class="bg-green-600 text-white px-5 py-3 rounded mt-3 w-full md:w-auto">✅ 確認收料存檔</button>
+        <div id="receiveResultMsg" class="text-sm mt-2"></div>
+    </div>
+
+    <!-- 待退貨面板（不良品） -->
+    <div id="returnPanel" class="bg-white rounded shadow p-4 mb-6" style="display:none;">
+        <h2 class="text-xl font-bold mb-3">↩️ 待退貨（不良品）</h2>
+        <div class="flex flex-wrap gap-2 mb-4 items-center">
+            <input type="text" id="returnScanCode" placeholder="掃描或輸入料號" class="border flex-1 p-3 rounded">
+            <input type="number" id="returnQty" placeholder="數量" value="1" class="border w-24 p-3 rounded" min="1">
+            <button id="returnScanBtn" class="bg-purple-600 text-white px-4 py-2 rounded">📷 掃描退貨</button>
+            <div class="flex gap-2">
+                <button id="refreshReturnBtn" class="bg-blue-600 text-white px-4 py-2 rounded">重新整理</button>
+                <button id="returnSelectedBtn" class="bg-red-600 text-white px-4 py-2 rounded">退貨所選物料</button>
+            </div>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full border text-sm">
+                <thead class="bg-gray-50">
+                    <tr><th>單據號碼</th><th>料號</th><th>品名</th><th>規格</th><th>不良數量</th><th><input type="checkbox" id="selectAllReturn"> 全選</th></tr>
+                </thead>
+                <tbody id="returnTableBody">
+                    <tr><td colspan="6" class="text-center py-4">載入中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 寄件出貨面板 -->
+    <div id="shipPanel" class="bg-white rounded shadow p-4" style="display:none;">
+        <h2 class="text-xl font-bold mb-3">📤 寄件出貨</h2>
+        <div class="mb-3">
+            <label class="block text-sm font-medium">待出貨單據</label>
+            <select id="shipDocSelect" class="border w-full p-2 rounded"><option value="">--請選擇--</option></select>
+            <button id="refreshShipDocsBtn" class="bg-gray-500 text-white px-2 py-1 mt-1 rounded">重新整理</button>
+        </div>
+        <div id="shipDocInfo" class="bg-gray-50 p-2 text-sm hidden"></div>
+        <div id="shipBoxesList" class="mt-3 border rounded p-2 max-h-64 overflow-auto hidden">
+            <div class="font-semibold mb-1">📦 待出貨箱子</div>
+            <div id="shipPendingBoxesContainer"></div>
+        </div>
+        <div class="flex gap-2 items-center mb-4 mt-3">
+            <input type="text" id="shipScanInput" placeholder="掃描或輸入箱號" class="border flex-1 p-2 rounded" autofocus>
+            <button id="shipScanBtn" class="bg-purple-600 text-white px-4 py-2 rounded">📷 掃描</button>
+            <button id="shipClearBtn" class="bg-red-500 text-white px-4 py-2 rounded">🗑️ 清空所有</button>
+        </div>
+        <div id="scannedBoxesList" class="mb-4 border rounded p-2">
+            <div class="font-semibold mb-2">已掃描箱子</div>
+            <div id="boxesContainer" class="max-h-32 overflow-auto"></div>
+        </div>
+        <h3 class="font-semibold mt-3">物料明細匯總</h3>
+        <div class="overflow-x-auto max-h-64">
+            <table class="min-w-full border text-sm">
+                <thead class="bg-gray-50"><tr><th>料號</th><th>品名</th><th>總數量</th><th>操作</th></tr></thead>
+                <tbody id="shipItemsTbody"></tbody>
+            </table>
+        </div>
+        <button id="confirmShipBtn" class="bg-green-600 text-white px-5 py-2 rounded mt-3">📦 執行出貨</button>
+        <div id="shipResultMsg" class="text-sm mt-2"></div>
+    </div>
+</div>
+
+<script>
+    const API_BASE = "/api/v1";
+    let token = localStorage.getItem('access_token');
+    if (!token) { alert('請先登入'); location.href = 'login.html'; }
+    let html5QrCode = null;
+
+    async function apiFetch(url, opts = {}) {
+        opts.headers = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            ...(opts.headers || {})
+        };
+        const res = await fetch(url, opts);
+        if (res.status === 401) {
+            alert('登入過期，請重新登入');
+            localStorage.removeItem('access_token');
+            location.href = 'login.html';
+            throw new Error('Unauthorized');
+        }
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+    }
+
+    function escapeHtml(s) { if (!s) return ''; return s.replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m])); }
+
+    // ========== 進貨收領邏輯 ==========
+    let currentReceiveItems = [];
+
+    function updateReceiveUI() {
+        document.getElementById('receiveItemCount').innerText = currentReceiveItems.length;
+        const tb = document.getElementById('receiveItemList');
+        tb.innerHTML = currentReceiveItems.map((it, idx) => `
+            <tr>
+                <td class="p-2">${escapeHtml(it.material_code)}</td>
+                <td class="p-2">${escapeHtml(it.name)}</td>
+                <td class="p-2">${it.qty}</td>
+                <td class="p-2"><button class="text-red-500" data-idx="${idx}">刪除</button></td>
+            </tr>
+        `).join('');
+        document.querySelectorAll('[data-idx]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const idx = parseInt(btn.getAttribute('data-idx'));
+                currentReceiveItems.splice(idx, 1);
+                updateReceiveUI();
+            });
+        });
+    }
+
+    document.getElementById('addManualItemBtn').onclick = async () => {
+        const docNumber = document.getElementById('receiveDocNo').value.trim();
+        if (!docNumber) { alert('請先輸入單據編號'); return; }
+        const code = document.getElementById('manualMaterialCode').value.trim();
+        const qty = parseInt(document.getElementById('manualQty').value) || 1;
+        if (!code) { alert('請輸入料號'); return; }
+        try {
+            const mat = await apiFetch(`${API_BASE}/materials/${encodeURIComponent(code)}`);
+            const ex = currentReceiveItems.find(i => i.material_code === code);
+            if (ex) ex.qty += qty;
+            else currentReceiveItems.push({ material_code: code, name: mat.name, qty });
+            updateReceiveUI();
+            document.getElementById('manualMaterialCode').value = '';
+            document.getElementById('manualQty').value = '1';
+        } catch(e) { alert(`料號不存在或無法取得: ${e.message}`); }
+    };
+
+    document.getElementById('confirmReceiveBtn').onclick = async () => {
+        const docNumber = document.getElementById('receiveDocNo').value.trim();
+        if (!docNumber) { alert('請輸入單據編號'); return; }
+        if (currentReceiveItems.length === 0) { alert('請加入收料'); return; }
+        const op = localStorage.getItem('username') || 'admin';
+        const payload = {
+            operator: op,
+            items: currentReceiveItems.map(i => ({ material_code: i.material_code, received_qty: i.qty }))
+        };
+        try {
+            const res = await fetch(`${API_BASE}/documents/${encodeURIComponent(docNumber)}/receive-batch`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify(payload)
+            });
+            if (res.ok) {
+                alert('收料成功，單據轉待驗');
+                document.getElementById('receiveDocNo').value = '';
+                currentReceiveItems = [];
+                updateReceiveUI();
+                document.getElementById('receiveResultMsg').innerHTML = '<span class="text-green-600">✅ 收料完成，可繼續新建單據</span>';
+            } else {
+                const err = await res.json();
+                alert(`失敗: ${err.detail}`);
+            }
+        } catch(e) { alert(`錯誤: ${e.message}`); }
+    };
+
+    // 共用相機掃描
+    async function startCamera(inputElementId, callback) {
+        const readerDiv = document.createElement('div');
+        readerDiv.id = 'tempQrReader';
+        readerDiv.style.position = 'fixed';
+        readerDiv.style.top = '0';
+        readerDiv.style.left = '0';
+        readerDiv.style.width = '100%';
+        readerDiv.style.height = '100%';
+        readerDiv.style.backgroundColor = 'black';
+        readerDiv.style.zIndex = '1000';
+        readerDiv.innerHTML = `<div id="qr-reader" style="width:100%; height:100%;"></div><button id="closeReader" style="position:absolute; top:20px; right:20px; background:white; padding:8px; border-radius:8px;">關閉</button>`;
+        document.body.appendChild(readerDiv);
+        const qrReader = new Html5Qrcode("qr-reader");
+        try {
+            await qrReader.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } },
+                (decodedText) => {
+                    qrReader.stop();
+                    document.body.removeChild(readerDiv);
+                    document.getElementById(inputElementId).value = decodedText;
+                    if (callback) callback(decodedText);
+                },
+                () => {}
+            );
+            document.getElementById('closeReader').onclick = () => {
+                qrReader.stop();
+                document.body.removeChild(readerDiv);
+            };
+        } catch(e) { alert('無法啟動相機: ' + e); document.body.removeChild(readerDiv); }
+    }
+
+    document.getElementById('scanMaterialBtn').onclick = () => startCamera('manualMaterialCode', () => {
+        document.getElementById('manualQty').focus();
+    });
+
+    // ========== 待退貨邏輯 ==========
+    async function loadPendingReturn() {
+        try {
+            const items = await apiFetch(`${API_BASE}/documents/pending-return`);
+            const tbody = document.getElementById('returnTableBody');
+            if (!items.length) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4">無待退貨項目</td></tr>';
+                return;
+            }
+            tbody.innerHTML = items.map(item => `
+                <tr>
+                    <td class="p-2">${escapeHtml(item.doc_number)}</td>
+                    <td class="p-2">${escapeHtml(item.material_code)}</td>
+                    <td class="p-2">${escapeHtml(item.material_name)}</td>
+                    <td class="p-2">${escapeHtml(item.spec)}</td>
+                    <td class="p-2 text-right">${item.qty}</td>
+                    <td class="p-2 text-center"><input type="checkbox" class="return-checkbox" data-doc="${escapeHtml(item.doc_number)}" data-code="${escapeHtml(item.material_code)}" data-qty="${item.qty}"></td>
+                </tr>
+            `).join('');
+            const selectAll = document.getElementById('selectAllReturn');
+            if (selectAll) {
+                selectAll.onclick = (e) => {
+                    document.querySelectorAll('.return-checkbox').forEach(cb => cb.checked = e.target.checked);
+                };
+            }
+        } catch(e) { console.error(e); alert('載入待退貨失敗'); }
+    }
+
+    async function executeReturn() {
+        const checkboxes = document.querySelectorAll('.return-checkbox:checked');
+        if (checkboxes.length === 0) { alert('請至少選擇一項物料'); return; }
+        const groups = new Map();
+        for (const cb of checkboxes) {
+            const doc = cb.dataset.doc;
+            const code = cb.dataset.code;
+            const qty = parseInt(cb.dataset.qty);
+            if (!groups.has(doc)) groups.set(doc, []);
+            groups.get(doc).push({ material_code: code, received_qty: qty });
+        }
+        const operator = localStorage.getItem('username') || 'admin';
+        let totalSuccess = 0, totalFailed = 0;
+        for (const [doc, items] of groups.entries()) {
+            try {
+                const res = await fetch(`${API_BASE}/documents/return`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ operator, items })
+                });
+                const result = await res.json();
+                if (res.ok) totalSuccess += items.length;
+                else { alert(`退貨失敗 (單據 ${doc}): ${result.detail || '未知錯誤'}`); totalFailed += items.length; }
+            } catch(e) { alert(`退貨請求錯誤 (單據 ${doc}): ${e.message}`); totalFailed += items.length; }
+        }
+        alert(`退貨處理完成：成功 ${totalSuccess} 項，失敗 ${totalFailed} 項`);
+        if (totalSuccess > 0) loadPendingReturn();
+    }
+
+    document.getElementById('refreshReturnBtn').onclick = loadPendingReturn;
+    document.getElementById('returnSelectedBtn').onclick = executeReturn;
+    document.getElementById('returnScanBtn').onclick = () => startCamera('returnScanCode', async () => {
+        const materialCode = document.getElementById('returnScanCode').value.trim();
+        if (!materialCode) return;
+        const qty = parseInt(document.getElementById('returnQty').value) || 1;
+        const rows = document.querySelectorAll('#returnTableBody tr');
+        let targetRow = null;
+        for (let row of rows) {
+            if (row.cells[1] && row.cells[1].innerText === materialCode) {
+                targetRow = row;
+                break;
+            }
+        }
+        if (!targetRow) { alert(`找不到不良品料號 ${materialCode}`); return; }
+        const docNumber = targetRow.cells[0].innerText;
+        const maxQty = parseInt(targetRow.cells[4].innerText);
+        const returnQty = Math.min(qty, maxQty);
+        if (returnQty <= 0) { alert('數量無效'); return; }
+        if (confirm(`退貨 ${materialCode} 數量 ${returnQty} (最大 ${maxQty})?`)) {
+            try {
+                const res = await fetch(`${API_BASE}/documents/return`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ operator: localStorage.getItem('username') || 'admin', items: [{ material_code: materialCode, received_qty: returnQty }] })
+                });
+                if (res.ok) { alert('退貨成功'); loadPendingReturn(); }
+                else { const err = await res.json(); alert(`退貨失敗: ${err.detail}`); }
+            } catch(e) { alert(`錯誤: ${e.message}`); }
+        }
+        document.getElementById('returnScanCode').value = '';
+        document.getElementById('returnQty').value = '1';
+    });
+
+    // ========== 寄件出貨邏輯 ==========
+    let currentShipDocNumber = "";
+    let scannedBoxes = new Set();
+    let shipItemsMap = new Map();
+
+    async function loadReadyToShip() {
+        try {
+            const docs = await apiFetch(`${API_BASE}/documents/ready-to-ship`);
+            const sel = document.getElementById('shipDocSelect');
+            sel.innerHTML = '<option value="">--請選擇--</option>';
+            for (const d of docs) {
+                const opt = document.createElement('option');
+                opt.value = d.doc_number;
+                opt.textContent = `${d.doc_number} (${d.doc_type})`;
+                sel.appendChild(opt);
+            }
+        } catch(e) { console.error(e); }
+    }
+
+    async function onShipDocChange() {
+        const docNumber = document.getElementById('shipDocSelect').value;
+        currentShipDocNumber = docNumber;
+        scannedBoxes.clear();
+        shipItemsMap.clear();
+        renderBoxesList();
+        renderShipItems();
+        document.getElementById('shipDocInfo').classList.add('hidden');
+        document.getElementById('shipBoxesList').classList.add('hidden');
+        if (!docNumber) return;
+        try {
+            const detail = await apiFetch(`${API_BASE}/documents/${docNumber}/details`);
+            document.getElementById('shipDocInfo').innerHTML = `<strong>${escapeHtml(docNumber)}</strong> 狀態: ${escapeHtml(detail.document.status)}`;
+            document.getElementById('shipDocInfo').classList.remove('hidden');
+            const boxes = await apiFetch(`${API_BASE}/boxes/?doc_number=${encodeURIComponent(docNumber)}&status=待出貨倉`);
+            if (boxes.length === 0) return;
+            const container = document.getElementById('shipPendingBoxesContainer');
+            container.innerHTML = boxes.map(b => `
+                <div class="border-b py-2 flex justify-between items-center">
+                    <div><span class="font-mono">${escapeHtml(b.box_number)}</span><span class="ml-2 text-sm text-gray-500">(內含 ${b.qty_inside} 個物料)</span></div>
+                    <button class="select-box-ship bg-blue-500 text-white px-2 py-1 rounded text-sm" data-box="${escapeHtml(b.box_number)}">選擇此箱</button>
+                </div>
+            `).join('');
+            document.getElementById('shipBoxesList').classList.remove('hidden');
+            document.querySelectorAll('.select-box-ship').forEach(btn => {
+                btn.onclick = async () => { await addBoxByNumber(btn.getAttribute('data-box')); };
+            });
+        } catch(e) { alert('載入失敗'); }
+    }
+
+    async function addBoxByNumber(boxNumber) {
+        if (scannedBoxes.has(boxNumber)) { alert(`箱子 ${boxNumber} 已新增過，請勿重複`); return false; }
+        try {
+            const data = await apiFetch(`${API_BASE}/boxes/${encodeURIComponent(boxNumber)}/details`);
+            const box = data.box;
+            if (currentShipDocNumber && box.parent_doc_number !== currentShipDocNumber) {
+                alert(`箱子 ${boxNumber} 不屬於當前選擇的單據 ${currentShipDocNumber}`);
+                return false;
+            }
+            if (box.status !== '待出貨倉') {
+                alert(`箱子 ${boxNumber} 狀態為 ${box.status}，不是待出貨倉，無法出貨`);
+                return false;
+            }
+            scannedBoxes.add(boxNumber);
+            renderBoxesList();
+            for (const item of data.details) {
+                const code = item.material_code;
+                const existing = shipItemsMap.get(code);
+                if (existing) existing.totalQty += item.quantity;
+                else shipItemsMap.set(code, { name: item.material_name, spec: item.spec, totalQty: item.quantity });
+            }
+            renderShipItems();
+            return true;
+        } catch(e) { alert(`加載箱子失敗: ${e.message}`); return false; }
+    }
+
+    function renderBoxesList() {
+        const container = document.getElementById('boxesContainer');
+        if (scannedBoxes.size === 0) { container.innerHTML = '<div class="text-gray-400 text-sm">尚無掃描箱子</div>'; return; }
+        container.innerHTML = Array.from(scannedBoxes).map(box => `
+            <div class="flex justify-between items-center border-b py-1">
+                <span class="font-mono">${escapeHtml(box)}</span>
+                <button class="remove-box-btn text-red-500 text-sm" data-box="${escapeHtml(box)}">移除</button>
+            </div>
+        `).join('');
+        document.querySelectorAll('.remove-box-btn').forEach(btn => {
+            btn.onclick = () => removeBox(btn.dataset.box);
+        });
+    }
+
+    function removeBox(boxNumber) {
+        if (!scannedBoxes.has(boxNumber)) return;
+        scannedBoxes.delete(boxNumber);
+        reloadAllBoxesDetails();
+    }
+
+    async function reloadAllBoxesDetails() {
+        shipItemsMap.clear();
+        for (const box of scannedBoxes) {
+            try {
+                const data = await apiFetch(`${API_BASE}/boxes/${encodeURIComponent(box)}/details`);
+                for (const item of data.details) {
+                    const code = item.material_code;
+                    const existing = shipItemsMap.get(code);
+                    if (existing) existing.totalQty += item.quantity;
+                    else shipItemsMap.set(code, { name: item.material_name, spec: item.spec, totalQty: item.quantity });
+                }
+            } catch(e) { console.error(e); }
+        }
+        renderBoxesList();
+        renderShipItems();
+    }
+
+    function renderShipItems() {
+        const tbody = document.getElementById('shipItemsTbody');
+        if (shipItemsMap.size === 0) { tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4">暫無物料</td></tr>'; return; }
+        tbody.innerHTML = Array.from(shipItemsMap.entries()).map(([code, item]) => `
+            <tr>
+                <td class="p-2">${escapeHtml(code)}</td>
+                <td class="p-2">${escapeHtml(item.name)}</td>
+                <td class="p-2"><input type="number" class="ship-qty w-20 border px-1 text-center" data-code="${escapeHtml(code)}" value="${item.totalQty}" min="0"></td>
+                <td class="p-2"><button class="remove-item-btn bg-red-500 text-white px-2 py-1 rounded text-xs" data-code="${escapeHtml(code)}">移除</button></td>
+            </tr>
+        `).join('');
+        document.querySelectorAll('.ship-qty').forEach(inp => {
+            inp.addEventListener('change', () => {
+                const code = inp.dataset.code;
+                let newQty = parseInt(inp.value) || 0;
+                if (newQty < 0) newQty = 0;
+                inp.value = newQty;
+                if (shipItemsMap.has(code)) shipItemsMap.get(code).totalQty = newQty;
+            });
+        });
+        document.querySelectorAll('.remove-item-btn').forEach(btn => {
+            btn.onclick = () => { shipItemsMap.delete(btn.dataset.code); renderShipItems(); };
+        });
+    }
+
+    async function handleScanInput() {
+        const input = document.getElementById('shipScanInput');
+        const boxNumber = input.value.trim();
+        if (!boxNumber) return;
+        await addBoxByNumber(boxNumber);
+        input.value = '';
+        input.focus();
+    }
+
+    function clearAll() {
+        if (scannedBoxes.size === 0) return;
+        if (confirm('確定清空所有已掃描的箱子？')) {
+            scannedBoxes.clear();
+            shipItemsMap.clear();
+            renderBoxesList();
+            renderShipItems();
+        }
+    }
+
+    async function confirmShip() {
+        if (scannedBoxes.size === 0) { alert('請至少掃描一個箱子'); return; }
+        if (!currentShipDocNumber) { alert('請先選擇待出貨單據'); return; }
+        const operator = localStorage.getItem('username') || 'admin';
+        const boxNumbers = Array.from(scannedBoxes);
+        try {
+            const res = await fetch(`${API_BASE}/documents/ship-boxes`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ box_numbers: boxNumbers, operator })
+            });
+            if (res.ok) {
+                alert('出貨完成');
+                scannedBoxes.clear();
+                shipItemsMap.clear();
+                renderBoxesList();
+                renderShipItems();
+                document.getElementById('shipResultMsg').innerHTML = '<span class="text-green-600">✅ 出貨完成</span>';
+                await loadReadyToShip();
+                if (currentShipDocNumber) {
+                    document.getElementById('shipDocSelect').value = currentShipDocNumber;
+                    await onShipDocChange();
+                }
+            } else {
+                const err = await res.json();
+                alert(`出貨失敗: ${err.detail}`);
+            }
+        } catch(e) { alert(`請求錯誤: ${e.message}`); }
+    }
+
+    document.getElementById('refreshShipDocsBtn').onclick = loadReadyToShip;
+    document.getElementById('shipDocSelect').onchange = onShipDocChange;
+    document.getElementById('shipScanBtn').onclick = () => startCamera('shipScanInput', handleScanInput);
+    document.getElementById('shipScanInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') handleScanInput(); });
+    document.getElementById('shipClearBtn').onclick = clearAll;
+    document.getElementById('confirmShipBtn').onclick = confirmShip;
+
+    // ========== 頁籤切換 ==========
+    function showPanel(panel) {
+        document.getElementById('receivePanel').style.display = panel === 'receive' ? 'block' : 'none';
+        document.getElementById('returnPanel').style.display = panel === 'return' ? 'block' : 'none';
+        document.getElementById('shipPanel').style.display = panel === 'ship' ? 'block' : 'none';
+        if (panel === 'return') loadPendingReturn();
+        if (panel === 'ship') {
+            loadReadyToShip();
+            scannedBoxes.clear();
+            shipItemsMap.clear();
+            renderBoxesList();
+            renderShipItems();
+            document.getElementById('shipDocSelect').value = '';
+            currentShipDocNumber = '';
+            document.getElementById('shipDocInfo').classList.add('hidden');
+            document.getElementById('shipBoxesList').classList.add('hidden');
+        }
+        // 高亮按鈕樣式
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        if (panel === 'receive') document.getElementById('tabReceiveBtn').classList.add('active');
+        if (panel === 'return') document.getElementById('tabReturnBtn').classList.add('active');
+        if (panel === 'ship') document.getElementById('tabShipBtn').classList.add('active');
+    }
+
+    document.getElementById('tabReceiveBtn').onclick = () => showPanel('receive');
+    document.getElementById('tabReturnBtn').onclick = () => showPanel('return');
+    document.getElementById('tabShipBtn').onclick = () => showPanel('ship');
+
+    function logout() { localStorage.clear(); location.href = 'login.html'; }
+
+    // 初始化
+    updateReceiveUI();
+    loadPendingReturn();
+    showPanel('receive');
+</script>
+</body>
+</html>

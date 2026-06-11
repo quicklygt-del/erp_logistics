@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>我的入庫任務</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <style>.highlight { background-color: #fff3cd; } #reader { width: 100%; max-width: 500px; margin-top: 10px; }</style>
+</head>
+<body class="bg-gray-100 p-6">
+<div class="max-w-7xl mx-auto">
+    <div class="flex justify-between items-center mb-4">
+        <h1 class="text-3xl font-bold">📥 我的入庫任務</h1>
+        <div>
+            <button onclick="location.href='worker_dashboard.html'" class="bg-gray-500 text-white px-3 py-1 rounded text-sm">← 返回工作台</button>
+            <button onclick="logout()" class="bg-red-500 text-white px-3 py-1 rounded text-sm ml-2">登出</button>
+        </div>
+    </div>
+    <div class="bg-white rounded shadow p-4">
+        <div class="flex flex-wrap gap-2 mb-3 bg-gray-50 p-2 rounded">
+            <input type="text" id="scanMaterialCode" placeholder="掃描或輸入料號 (按 Enter 定位)" class="border flex-1 p-2 rounded" autofocus>
+            <input type="number" id="inboundQty" placeholder="數量" value="1" class="border w-24 p-2 rounded" min="1">
+            <button id="inboundBtn" class="bg-green-600 text-white px-4 py-2 rounded">入庫</button>
+            <button id="cameraBtn" class="bg-purple-600 text-white px-4 py-2 rounded">📷 掃描</button>
+        </div>
+        <div id="reader" class="hidden"></div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full border text-sm">
+                <thead class="bg-gray-50"><tr><th>採購單號</th><th>料號</th><th>品名</th><th>待入庫數量</th><th>已入庫數量</th><th>操作</th></tr></thead>
+                <tbody id="tasksTbody"><tr><td colspan="6" class="text-center py-4">載入中...</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<script>
+    const API_BASE = "/api/v1";
+    let token = localStorage.getItem('access_token');
+    if (!token) { alert('請先登入'); location.href = 'login.html'; }
+    let currentUsername = localStorage.getItem('username') || '';
+    let html5QrCode = null;
+
+    async function apiFetch(url, opts = {}) {
+        opts.headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, ...(opts.headers || {}) };
+        const res = await fetch(url, opts);
+        if (res.status === 401) { alert('登入過期'); localStorage.removeItem('access_token'); location.href = 'login.html'; throw new Error('Unauthorized'); }
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+    }
+    function escapeHtml(s) { return s.replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m])); }
+    async function loadTasks() {
+        try {
+            const tasks = await apiFetch(`${API_BASE}/inventory/my-inbound-tasks`);
+            const tbody = document.getElementById('tasksTbody');
+            if (!tasks.length) { tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4">暫無指派給您的入庫任務</td></tr>'; return; }
+            tbody.innerHTML = tasks.map(task => `
+                <tr data-code="${escapeHtml(task.material_code)}" data-id="${task.id}" data-expected="${task.expected_qty}" data-completed="${task.completed_qty}">
+                    <td class="p-2">${escapeHtml(task.doc_number)}</td>
+                    <td class="p-2">${escapeHtml(task.material_code)}</td>
+                    <td class="p-2">${escapeHtml(task.material_name_alt || task.material_name)}</td>
+                    <td class="p-2 text-right">${task.expected_qty}</td>
+                    <td class="p-2 text-right completed-qty">${task.completed_qty}</td>
+                    <td class="p-2"><button class="quick-inbound bg-blue-600 text-white px-2 py-1 rounded text-xs" data-id="${task.id}">快速入庫</button></td>
+                </tr>
+            `).join('');
+            bindQuickInbound();
+        } catch(e) { alert('載入失敗: ' + e.message); }
+    }
+    function bindQuickInbound() {
+        document.querySelectorAll('.quick-inbound').forEach(btn => {
+            btn.onclick = async () => {
+                const taskId = btn.dataset.id;
+                const row = btn.closest('tr');
+                const expected = parseInt(row.dataset.expected);
+                const completed = parseInt(row.querySelector('.completed-qty').innerText);
+                const pending = expected - completed;
+                const qty = prompt(`請輸入本次入庫數量 (最多 ${pending})`, pending);
+                if (!qty) return;
+                await performInbound(taskId, parseInt(qty));
+            };
+        });
+    }
+    async function performInbound(taskId, qty) {
+        try {
+            await apiFetch(`${API_BASE}/inventory/inbound-tasks/complete`, {
+                method: 'POST',
+                body: JSON.stringify({ task_id: taskId, completed_qty: qty, operator: currentUsername })
+            });
+            alert('入庫成功');
+            loadTasks();
+        } catch(e) { alert('入庫失敗: ' + e.message); }
+    }
+    function handleScan(code) {
+        const row = document.querySelector(`tr[data-code="${escapeHtml(code)}"]`);
+        if (row) {
+            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            row.classList.add('highlight');
+            setTimeout(() => row.classList.remove('highlight'), 1000);
+            document.getElementById('inboundQty').focus();
+            window.scannedCode = code;
+        } else { alert(`找不到料號: ${code}`); }
+    }
+    async function startCamera() {
+        const readerDiv = document.getElementById('reader');
+        readerDiv.classList.remove('hidden');
+        if (html5QrCode) await html5QrCode.stop();
+        html5QrCode = new Html5Qrcode("reader");
+        try {
+            await html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } },
+                (decodedText) => {
+                    html5QrCode.stop();
+                    readerDiv.classList.add('hidden');
+                    document.getElementById('scanMaterialCode').value = decodedText;
+                    handleScan(decodedText);
+                }, () => {});
+        } catch(err) { alert('無法啟動相機: ' + err); readerDiv.classList.add('hidden'); }
+    }
+    document.getElementById('inboundBtn').onclick = async () => {
+        let materialCode = document.getElementById('scanMaterialCode').value.trim();
+        if (!materialCode && window.scannedCode) materialCode = window.scannedCode;
+        if (!materialCode) { alert('請先掃描或輸入料號'); return; }
+        const qty = parseInt(document.getElementById('inboundQty').value);
+        if (isNaN(qty) || qty <= 0) { alert('請輸入有效數量'); return; }
+        const row = document.querySelector(`tr[data-code="${escapeHtml(materialCode)}"]`);
+        if (!row) { alert('該料號不在您的任務清單中'); return; }
+        const taskId = row.dataset.id;
+        await performInbound(taskId, qty);
+        document.getElementById('scanMaterialCode').value = '';
+        document.getElementById('inboundQty').value = '1';
+        window.scannedCode = null;
+    };
+    document.getElementById('scanMaterialCode').onkeypress = (e) => { if (e.key === 'Enter') { e.preventDefault(); handleScan(e.target.value.trim()); e.target.value = ''; } };
+    document.getElementById('cameraBtn').onclick = () => { if (html5QrCode) html5QrCode.stop().catch(console.warn); startCamera(); };
+    window.logout = () => { localStorage.clear(); location.href = 'login.html'; };
+    loadTasks();
+</script>
+</body>
+</html>

@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>入库任务完整测试</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        button { margin: 5px; padding: 8px 12px; cursor: pointer; }
+        pre { background: #f4f4f4; padding: 10px; border-radius: 5px; overflow-x: auto; }
+        .result-area { margin-top: 20px; }
+        input { margin: 5px; padding: 5px; }
+    </style>
+</head>
+<body>
+    <h2>入库任务管理测试（完整版）</h2>
+    <div>
+        <label>用户名: <input type="text" id="username" value="admin"></label>
+        <label>密码: <input type="password" id="password" value="admin123"></label>
+        <button onclick="login()">登录</button>
+        <span id="tokenStatus" style="margin-left: 20px; color: green;"></span>
+    </div>
+    <hr>
+    <div>
+        <button onclick="createTask()">1. 创建入库任务 (TEST-2024001 / ABC001 x50)</button>
+        <button onclick="listPending()">2. 查看待指派任务</button>
+        <button onclick="myTasks()">3. 查看我的任务 (warehouse01)</button>
+        <button onclick="assignTask()">4. 指派任务 (id=1 给 warehouse01)</button>
+        <button onclick="completeTask()">5. 完成部分入库 (id=1, 数量30)</button>
+        <button onclick="inboundHistory()">6. 查看入库历史</button>
+        <button onclick="completeRemaining()">7. 完成剩余入库 (id=1, 数量20)</button>
+    </div>
+    <div class="result-area">
+        <h3>响应结果:</h3>
+        <pre id="result">等待操作...</pre>
+    </div>
+
+    <script>
+        let token = null;
+
+        async function login() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const formData = new URLSearchParams();
+            formData.append('username', username);
+            formData.append('password', password);
+            try {
+                const resp = await fetch('http://127.0.0.1:8000/auth/token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: formData
+                });
+                const data = await resp.json();
+                if (resp.ok) {
+                    token = data.access_token;
+                    document.getElementById('tokenStatus').innerText = '已登录';
+                    document.getElementById('result').innerText = `登录成功！Token: ${token.substring(0, 50)}...`;
+                } else {
+                    document.getElementById('tokenStatus').innerText = '登录失败';
+                    document.getElementById('result').innerText = `登录失败: ${JSON.stringify(data)}`;
+                }
+            } catch(err) {
+                document.getElementById('result').innerText = `请求错误: ${err}`;
+            }
+        }
+
+        async function request(method, url, body = null) {
+            if (!token) {
+                document.getElementById('result').innerText = '请先登录';
+                throw new Error('未登录');
+            }
+            const opts = {
+                method,
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            };
+            if (body) opts.body = JSON.stringify(body);
+            const resp = await fetch(`/api/v1/inventory${url}`, opts);
+            let data;
+            try {
+                data = await resp.json();
+            } catch(e) {
+                data = { error: "无法解析JSON" };
+            }
+            document.getElementById('result').innerText = `${method} ${url}\n状态码: ${resp.status}\n响应: ${JSON.stringify(data, null, 2)}`;
+            return { status: resp.status, data };
+        }
+
+        async function createTask() {
+            await request('POST', '/inbound-tasks/create-from-doc', {
+                doc_number: "TEST-2024001",
+                items: [{ material_code: "ABC001", received_qty: 50 }]
+            });
+        }
+
+        async function listPending() {
+            await request('GET', '/inbound-tasks/pending');
+        }
+
+        async function myTasks() {
+            if (!token) {
+                document.getElementById('result').innerText = '请先登录';
+                return;
+            }
+            const resp = await fetch(`/api/v1/inventory/my-inbound-tasks?operator=warehouse01`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await resp.json();
+            document.getElementById('result').innerText = `GET /my-inbound-tasks?operator=warehouse01\n状态码: ${resp.status}\n响应: ${JSON.stringify(data, null, 2)}`;
+        }
+
+        async function assignTask() {
+            await request('PATCH', '/inbound-tasks/assign', {
+                task_id: 1,
+                assigned_to: "warehouse01",
+                assigned_by: "admin"
+            });
+        }
+
+        async function completeTask() {
+            await request('POST', '/inbound-tasks/complete', {
+                task_id: 1,
+                completed_qty: 30,
+                operator: "warehouse01"
+            });
+        }
+
+        async function completeRemaining() {
+            await request('POST', '/inbound-tasks/complete', {
+                task_id: 1,
+                completed_qty: 20,
+                operator: "warehouse01"
+            });
+        }
+
+        async function inboundHistory() {
+            await request('GET', '/history/inbound');
+        }
+    </script>
+</body>
+</html>

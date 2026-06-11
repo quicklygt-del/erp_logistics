@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>歷史紀錄查詢</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 強制表格儲存格有邊框（畫格子） */
+        .history-table th, .history-table td {
+            border: 1px solid #ccc;
+            padding: 0.5rem;
+            vertical-align: top;
+        }
+        .history-table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 p-6">
+<div class="max-w-7xl mx-auto">
+    <div class="flex justify-between items-center mb-6">
+        <div class="flex items-center gap-3">
+            <!-- 改為返回上一頁，而非固定指揮塔 -->
+            <button onclick="history.back()" class="bg-gray-500 text-white px-3 py-1 rounded text-sm">← 返回</button>
+            <h1 class="text-3xl font-bold">📜 歷史紀錄查詢</h1>
+        </div>
+    </div>
+
+    <div class="flex flex-wrap gap-2 mb-4 border-b pb-2">
+        <button id="tabInboundBtn" class="px-4 py-2 bg-blue-600 text-white rounded">📥 入庫完成歷史</button>
+        <button id="tabOutboundBtn" class="px-4 py-2 bg-gray-500 text-white rounded">📤 出庫完成歷史</button>
+        <button id="tabReturnBtn" class="px-4 py-2 bg-gray-500 text-white rounded">↩️ 退貨歷史</button>
+    </div>
+
+    <!-- 入庫完成歷史 -->
+    <div id="inboundPanel" class="bg-white rounded shadow p-4">
+        <div class="flex flex-wrap gap-3 items-end mb-3">
+            <div><label class="block text-sm">起始日期</label><input type="date" id="inboundStart" class="border p-2 rounded"></div>
+            <div><label class="block text-sm">結束日期</label><input type="date" id="inboundEnd" class="border p-2 rounded"></div>
+            <button id="searchInboundBtn" class="bg-green-600 text-white px-4 py-2 rounded">查詢</button>
+            <button id="refreshInboundBtn" class="bg-gray-500 text-white px-4 py-2 rounded">重新整理</button>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="history-table min-w-full text-sm">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th>時間</th><th>單據編號</th><th>料號</th><th>品名</th><th>規格</th><th>入庫數量</th><th>操作員</th>
+                    </tr>
+                </thead>
+                <tbody id="inboundTbody">
+                    <tr><td colspan="7" class="text-center py-4">載入中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div id="inboundPagination" class="flex justify-between items-center mt-3"></div>
+    </div>
+
+    <!-- 出庫完成歷史 -->
+    <div id="outboundPanel" class="bg-white rounded shadow p-4 hidden">
+        <div class="flex flex-wrap gap-3 items-end mb-3">
+            <div><label class="block text-sm">起始日期</label><input type="date" id="outboundStart" class="border p-2 rounded"></div>
+            <div><label class="block text-sm">結束日期</label><input type="date" id="outboundEnd" class="border p-2 rounded"></div>
+            <button id="searchOutboundBtn" class="bg-green-600 text-white px-4 py-2 rounded">查詢</button>
+            <button id="refreshOutboundBtn" class="bg-gray-500 text-white px-4 py-2 rounded">重新整理</button>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="history-table min-w-full text-sm">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th>時間</th><th>單據編號</th><th>料號</th><th>品名</th><th>規格</th><th>出庫數量</th><th>操作員</th>
+                    </tr>
+                </thead>
+                <tbody id="outboundTbody">
+                    <tr><td colspan="7" class="text-center py-4">載入中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div id="outboundPagination" class="flex justify-between items-center mt-3"></div>
+    </div>
+
+    <!-- 退貨歷史 -->
+    <div id="returnPanel" class="bg-white rounded shadow p-4 hidden">
+        <div class="flex flex-wrap gap-3 items-end mb-3">
+            <div><label class="block text-sm">起始日期</label><input type="date" id="returnStart" class="border p-2 rounded"></div>
+            <div><label class="block text-sm">結束日期</label><input type="date" id="returnEnd" class="border p-2 rounded"></div>
+            <button id="searchReturnBtn" class="bg-green-600 text-white px-4 py-2 rounded">查詢</button>
+            <button id="refreshReturnBtn" class="bg-gray-500 text-white px-4 py-2 rounded">重新整理</button>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="history-table min-w-full text-sm">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th>時間</th><th>單據編號</th><th>料號</th><th>品名</th><th>規格</th><th>退貨數量</th><th>操作員</th>
+                    </tr>
+                </thead>
+                <tbody id="returnTbody">
+                    <tr><td colspan="7" class="text-center py-4">載入中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div id="returnPagination" class="flex justify-between items-center mt-3"></div>
+    </div>
+</div>
+
+<script>
+    const API_BASE = "/api/v1";
+    let inboundPage = 0, inboundTotal = 0, inboundLimit = 20;
+    let outboundPage = 0, outboundTotal = 0, outboundLimit = 20;
+    let returnPage = 0, returnTotal = 0, returnLimit = 20;
+
+    function checkAuth() {
+        const token = localStorage.getItem('access_token');
+        if (!token) {
+            alert('請先登入');
+            location.href = 'login.html';
+            return false;
+        }
+        return token;
+    }
+
+    async function apiFetch(url, opts = {}) {
+        const token = checkAuth();
+        if (!token) throw new Error('未登入');
+        opts.headers = {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            ...(opts.headers || {})
+        };
+        const res = await fetch(url, opts);
+        if (res.status === 401) {
+            alert('登入過期，請重新登入');
+            localStorage.removeItem('access_token');
+            location.href = 'login.html';
+            throw new Error('Unauthorized');
+        }
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+    }
+
+    function escapeHtml(s) { if (!s) return ''; return s.replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m])); }
+    function formatDate(date) { return date.toISOString().slice(0,10); }
+
+    function getDateRange(startDateStr, endDateStr) {
+        const params = new URLSearchParams();
+        if (startDateStr) {
+            const start = new Date(startDateStr);
+            params.append('start_date', start.toISOString());
+        }
+        if (endDateStr) {
+            let end = new Date(endDateStr);
+            end.setHours(23, 59, 59, 999);
+            params.append('end_date', end.toISOString());
+        }
+        return params;
+    }
+
+    async function loadInboundHistory(resetPage = true) {
+        if (resetPage) inboundPage = 0;
+        const start = document.getElementById('inboundStart').value;
+        const end = document.getElementById('inboundEnd').value;
+        const params = getDateRange(start, end);
+        params.append('limit', inboundLimit);
+        params.append('offset', inboundPage * inboundLimit);
+        try {
+            const data = await apiFetch(`${API_BASE}/inventory/history/inbound?${params.toString()}`);
+            inboundTotal = data.total;
+            const tbody = document.getElementById('inboundTbody');
+            if (!data.data.length) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center">無資料</td></tr>';
+            } else {
+                tbody.innerHTML = data.data.map(item => `
+                    <tr>
+                        <td class="p-2">${new Date(item.created_at).toLocaleString()}</td>
+                        <td class="p-2">${escapeHtml(item.doc_number)}</td>
+                        <td class="p-2">${escapeHtml(item.material_code)}</td>
+                        <td class="p-2">${escapeHtml(item.name)}</td>
+                        <td class="p-2">${escapeHtml(item.spec)}</td>
+                        <td class="p-2 text-right">${item.qty}</td>
+                        <td class="p-2">${escapeHtml(item.operator)}</td>
+                    </tr>
+                `).join('');
+            }
+            renderPagination('inbound', inboundPage, inboundTotal, inboundLimit);
+        } catch(e) { console.error(e); alert('查詢失敗'); }
+    }
+
+    async function loadOutboundHistory(resetPage = true) {
+        if (resetPage) outboundPage = 0;
+        const start = document.getElementById('outboundStart').value;
+        const end = document.getElementById('outboundEnd').value;
+        const params = getDateRange(start, end);
+        params.append('limit', outboundLimit);
+        params.append('offset', outboundPage * outboundLimit);
+        try {
+            const data = await apiFetch(`${API_BASE}/inventory/history/outbound?${params.toString()}`);
+            outboundTotal = data.total;
+            const tbody = document.getElementById('outboundTbody');
+            if (!data.data.length) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center">無資料</td></tr>';
+            } else {
+                tbody.innerHTML = data.data.map(item => `
+                    <tr>
+                        <td class="p-2">${new Date(item.created_at).toLocaleString()}</td>
+                        <td class="p-2">${escapeHtml(item.doc_number)}</td>
+                        <td class="p-2">${escapeHtml(item.material_code)}</td>
+                        <td class="p-2">${escapeHtml(item.name)}</td>
+                        <td class="p-2">${escapeHtml(item.spec)}</td>
+                        <td class="p-2 text-right">${item.qty}</td>
+                        <td class="p-2">${escapeHtml(item.operator)}</td>
+                    </tr>
+                `).join('');
+            }
+            renderPagination('outbound', outboundPage, outboundTotal, outboundLimit);
+        } catch(e) { console.error(e); alert('查詢失敗'); }
+    }
+
+    async function loadReturnHistory(resetPage = true) {
+        if (resetPage) returnPage = 0;
+        const start = document.getElementById('returnStart').value;
+        const end = document.getElementById('returnEnd').value;
+        const params = getDateRange(start, end);
+        params.append('limit', returnLimit);
+        params.append('offset', returnPage * returnLimit);
+        try {
+            const data = await apiFetch(`${API_BASE}/inventory/history/return?${params.toString()}`);
+            returnTotal = data.total;
+            const tbody = document.getElementById('returnTbody');
+            if (!data.data.length) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center">無資料</td></tr>';
+            } else {
+                tbody.innerHTML = data.data.map(item => `
+                    <tr>
+                        <td class="p-2">${new Date(item.created_at).toLocaleString()}</td>
+                        <td class="p-2">${escapeHtml(item.doc_number)}</td>
+                        <td class="p-2">${escapeHtml(item.material_code)}</td>
+                        <td class="p-2">${escapeHtml(item.name)}</td>
+                        <td class="p-2">${escapeHtml(item.spec)}</td>
+                        <td class="p-2 text-right">${item.qty}</td>
+                        <td class="p-2">${escapeHtml(item.operator)}</td>
+                    </tr>
+                `).join('');
+            }
+            renderPagination('return', returnPage, returnTotal, returnLimit);
+        } catch(e) { console.error(e); alert('查詢失敗'); }
+    }
+
+    function renderPagination(prefix, page, total, limit) {
+        const container = document.getElementById(`${prefix}Pagination`);
+        if (!container) return;
+        const totalPages = Math.ceil(total / limit);
+        container.innerHTML = `
+            <span>第 ${page+1} / ${totalPages || 1} 頁，共 ${total} 筆</span>
+            <div>
+                <button id="${prefix}Prev" ${page===0 ? 'disabled' : ''} class="border px-2 py-1 rounded mr-1">上一頁</button>
+                <button id="${prefix}Next" ${(page+1)*limit >= total ? 'disabled' : ''} class="border px-2 py-1 rounded">下一頁</button>
+            </div>
+        `;
+        document.getElementById(`${prefix}Prev`)?.addEventListener('click', () => {
+            if (prefix === 'inbound') { inboundPage--; loadInboundHistory(false); }
+            else if (prefix === 'outbound') { outboundPage--; loadOutboundHistory(false); }
+            else if (prefix === 'return') { returnPage--; loadReturnHistory(false); }
+        });
+        document.getElementById(`${prefix}Next`)?.addEventListener('click', () => {
+            if (prefix === 'inbound') { inboundPage++; loadInboundHistory(false); }
+            else if (prefix === 'outbound') { outboundPage++; loadOutboundHistory(false); }
+            else if (prefix === 'return') { returnPage++; loadReturnHistory(false); }
+        });
+    }
+
+    function showPanel(panel) {
+        document.getElementById('inboundPanel').style.display = panel === 'inbound' ? 'block' : 'none';
+        document.getElementById('outboundPanel').style.display = panel === 'outbound' ? 'block' : 'none';
+        document.getElementById('returnPanel').style.display = panel === 'return' ? 'block' : 'none';
+        
+        const btns = {
+            inbound: document.getElementById('tabInboundBtn'),
+            outbound: document.getElementById('tabOutboundBtn'),
+            return: document.getElementById('tabReturnBtn')
+        };
+        for (const [key, btn] of Object.entries(btns)) {
+            if (key === panel) {
+                btn.classList.remove('bg-gray-500');
+                btn.classList.add('bg-blue-600');
+            } else {
+                btn.classList.remove('bg-blue-600');
+                btn.classList.add('bg-gray-500');
+            }
+        }
+        
+        if (panel === 'inbound') loadInboundHistory();
+        if (panel === 'outbound') loadOutboundHistory();
+        if (panel === 'return') loadReturnHistory();
+    }
+
+    document.getElementById('tabInboundBtn').onclick = () => showPanel('inbound');
+    document.getElementById('tabOutboundBtn').onclick = () => showPanel('outbound');
+    document.getElementById('tabReturnBtn').onclick = () => showPanel('return');
+    document.getElementById('searchInboundBtn').onclick = () => loadInboundHistory(true);
+    document.getElementById('refreshInboundBtn').onclick = () => loadInboundHistory(true);
+    document.getElementById('searchOutboundBtn').onclick = () => loadOutboundHistory(true);
+    document.getElementById('refreshOutboundBtn').onclick = () => loadOutboundHistory(true);
+    document.getElementById('searchReturnBtn').onclick = () => loadReturnHistory(true);
+    document.getElementById('refreshReturnBtn').onclick = () => loadReturnHistory(true);
+
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 30);
+    document.getElementById('inboundStart').value = formatDate(startDate);
+    document.getElementById('inboundEnd').value = formatDate(endDate);
+    document.getElementById('outboundStart').value = formatDate(startDate);
+    document.getElementById('outboundEnd').value = formatDate(endDate);
+    document.getElementById('returnStart').value = formatDate(startDate);
+    document.getElementById('returnEnd').value = formatDate(endDate);
+
+    showPanel('inbound');
+</script>
+</body>
+</html>
