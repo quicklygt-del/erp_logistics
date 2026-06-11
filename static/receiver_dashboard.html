@@ -72,7 +72,7 @@
                     <tr><th>單據號碼</th><th>料號</th><th>品名</th><th>規格</th><th>不良數量</th><th><input type="checkbox" id="selectAllReturn"> 全選</th></tr>
                 </thead>
                 <tbody id="returnTableBody">
-                    <tr><td colspan="6" class="text-center py-4">載入中...</td></tr>
+                    <tr><td colspan="6" class="text-center py-4">載入中...</tbody>
                 </tbody>
             </table>
         </div>
@@ -116,7 +116,7 @@
     const API_BASE = "/api/v1";
     let token = localStorage.getItem('access_token');
     if (!token) { alert('請先登入'); location.href = 'login.html'; }
-    let html5QrCode = null;
+    let activeScanner = null; // 追蹤目前使用的掃描器實例
 
     async function apiFetch(url, opts = {}) {
         opts.headers = {
@@ -136,6 +136,48 @@
     }
 
     function escapeHtml(s) { if (!s) return ''; return s.replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m])); }
+
+    // ========== 統一的相機掃描函數（使用 html5-qrcode）==========
+    async function startCamera(onSuccess) {
+        // 關閉已存在的掃描器
+        if (activeScanner) {
+            try { await activeScanner.stop(); } catch(e) { console.warn(e); }
+            activeScanner = null;
+        }
+        const readerDiv = document.createElement('div');
+        readerDiv.id = 'tempQrReader';
+        readerDiv.style.position = 'fixed';
+        readerDiv.style.top = '0';
+        readerDiv.style.left = '0';
+        readerDiv.style.width = '100%';
+        readerDiv.style.height = '100%';
+        readerDiv.style.backgroundColor = 'black';
+        readerDiv.style.zIndex = '1000';
+        readerDiv.innerHTML = `<div id="qr-reader" style="width:100%; height:100%;"></div><button id="closeReader" style="position:absolute; top:20px; right:20px; background:white; padding:8px; border-radius:8px;">關閉</button>`;
+        document.body.appendChild(readerDiv);
+        const qrReader = new Html5Qrcode("qr-reader");
+        activeScanner = qrReader;
+        try {
+            await qrReader.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } },
+                (decodedText) => {
+                    qrReader.stop().catch(console.warn);
+                    document.body.removeChild(readerDiv);
+                    activeScanner = null;
+                    if (onSuccess) onSuccess(decodedText);
+                },
+                () => {}
+            );
+            document.getElementById('closeReader').onclick = () => {
+                qrReader.stop().catch(console.warn);
+                document.body.removeChild(readerDiv);
+                activeScanner = null;
+            };
+        } catch(e) {
+            alert('無法啟動相機: ' + e.message);
+            document.body.removeChild(readerDiv);
+            activeScanner = null;
+        }
+    }
 
     // ========== 進貨收領邏輯 ==========
     let currentReceiveItems = [];
@@ -205,40 +247,12 @@
         } catch(e) { alert(`錯誤: ${e.message}`); }
     };
 
-    // 共用相機掃描
-    async function startCamera(inputElementId, callback) {
-        const readerDiv = document.createElement('div');
-        readerDiv.id = 'tempQrReader';
-        readerDiv.style.position = 'fixed';
-        readerDiv.style.top = '0';
-        readerDiv.style.left = '0';
-        readerDiv.style.width = '100%';
-        readerDiv.style.height = '100%';
-        readerDiv.style.backgroundColor = 'black';
-        readerDiv.style.zIndex = '1000';
-        readerDiv.innerHTML = `<div id="qr-reader" style="width:100%; height:100%;"></div><button id="closeReader" style="position:absolute; top:20px; right:20px; background:white; padding:8px; border-radius:8px;">關閉</button>`;
-        document.body.appendChild(readerDiv);
-        const qrReader = new Html5Qrcode("qr-reader");
-        try {
-            await qrReader.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } },
-                (decodedText) => {
-                    qrReader.stop();
-                    document.body.removeChild(readerDiv);
-                    document.getElementById(inputElementId).value = decodedText;
-                    if (callback) callback(decodedText);
-                },
-                () => {}
-            );
-            document.getElementById('closeReader').onclick = () => {
-                qrReader.stop();
-                document.body.removeChild(readerDiv);
-            };
-        } catch(e) { alert('無法啟動相機: ' + e); document.body.removeChild(readerDiv); }
-    }
-
-    document.getElementById('scanMaterialBtn').onclick = () => startCamera('manualMaterialCode', () => {
-        document.getElementById('manualQty').focus();
-    });
+    document.getElementById('scanMaterialBtn').onclick = () => {
+        startCamera((decodedText) => {
+            document.getElementById('manualMaterialCode').value = decodedText;
+            document.getElementById('manualQty').focus();
+        });
+    };
 
     // ========== 待退貨邏輯 ==========
     async function loadPendingReturn() {
@@ -246,7 +260,7 @@
             const items = await apiFetch(`${API_BASE}/documents/pending-return`);
             const tbody = document.getElementById('returnTableBody');
             if (!items.length) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4">無待退貨項目</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4">無待退貨項目</tbody>';
                 return;
             }
             tbody.innerHTML = items.map(item => `
@@ -299,37 +313,39 @@
 
     document.getElementById('refreshReturnBtn').onclick = loadPendingReturn;
     document.getElementById('returnSelectedBtn').onclick = executeReturn;
-    document.getElementById('returnScanBtn').onclick = () => startCamera('returnScanCode', async () => {
-        const materialCode = document.getElementById('returnScanCode').value.trim();
-        if (!materialCode) return;
-        const qty = parseInt(document.getElementById('returnQty').value) || 1;
-        const rows = document.querySelectorAll('#returnTableBody tr');
-        let targetRow = null;
-        for (let row of rows) {
-            if (row.cells[1] && row.cells[1].innerText === materialCode) {
-                targetRow = row;
-                break;
+    document.getElementById('returnScanBtn').onclick = () => {
+        startCamera(async (decodedText) => {
+            const materialCode = decodedText;
+            if (!materialCode) return;
+            const qty = parseInt(document.getElementById('returnQty').value) || 1;
+            const rows = document.querySelectorAll('#returnTableBody tr');
+            let targetRow = null;
+            for (let row of rows) {
+                if (row.cells[1] && row.cells[1].innerText === materialCode) {
+                    targetRow = row;
+                    break;
+                }
             }
-        }
-        if (!targetRow) { alert(`找不到不良品料號 ${materialCode}`); return; }
-        const docNumber = targetRow.cells[0].innerText;
-        const maxQty = parseInt(targetRow.cells[4].innerText);
-        const returnQty = Math.min(qty, maxQty);
-        if (returnQty <= 0) { alert('數量無效'); return; }
-        if (confirm(`退貨 ${materialCode} 數量 ${returnQty} (最大 ${maxQty})?`)) {
-            try {
-                const res = await fetch(`${API_BASE}/documents/return`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({ operator: localStorage.getItem('username') || 'admin', items: [{ material_code: materialCode, received_qty: returnQty }] })
-                });
-                if (res.ok) { alert('退貨成功'); loadPendingReturn(); }
-                else { const err = await res.json(); alert(`退貨失敗: ${err.detail}`); }
-            } catch(e) { alert(`錯誤: ${e.message}`); }
-        }
-        document.getElementById('returnScanCode').value = '';
-        document.getElementById('returnQty').value = '1';
-    });
+            if (!targetRow) { alert(`找不到不良品料號 ${materialCode}`); return; }
+            const docNumber = targetRow.cells[0].innerText;
+            const maxQty = parseInt(targetRow.cells[4].innerText);
+            const returnQty = Math.min(qty, maxQty);
+            if (returnQty <= 0) { alert('數量無效'); return; }
+            if (confirm(`退貨 ${materialCode} 數量 ${returnQty} (最大 ${maxQty})?`)) {
+                try {
+                    const res = await fetch(`${API_BASE}/documents/return`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                        body: JSON.stringify({ operator: localStorage.getItem('username') || 'admin', items: [{ material_code: materialCode, received_qty: returnQty }] })
+                    });
+                    if (res.ok) { alert('退貨成功'); loadPendingReturn(); }
+                    else { const err = await res.json(); alert(`退貨失敗: ${err.detail}`); }
+                } catch(e) { alert(`錯誤: ${e.message}`); }
+            }
+            document.getElementById('returnScanCode').value = '';
+            document.getElementById('returnQty').value = '1';
+        });
+    };
 
     // ========== 寄件出貨邏輯 ==========
     let currentShipDocNumber = "";
@@ -445,7 +461,7 @@
 
     function renderShipItems() {
         const tbody = document.getElementById('shipItemsTbody');
-        if (shipItemsMap.size === 0) { tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4">暫無物料</td></tr>'; return; }
+        if (shipItemsMap.size === 0) { tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4">暫無物料</tbody>'; return; }
         tbody.innerHTML = Array.from(shipItemsMap.entries()).map(([code, item]) => `
             <tr>
                 <td class="p-2">${escapeHtml(code)}</td>
@@ -519,7 +535,10 @@
 
     document.getElementById('refreshShipDocsBtn').onclick = loadReadyToShip;
     document.getElementById('shipDocSelect').onchange = onShipDocChange;
-    document.getElementById('shipScanBtn').onclick = () => startCamera('shipScanInput', handleScanInput);
+    document.getElementById('shipScanBtn').onclick = () => startCamera((decodedText) => {
+        document.getElementById('shipScanInput').value = decodedText;
+        handleScanInput();
+    });
     document.getElementById('shipScanInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') handleScanInput(); });
     document.getElementById('shipClearBtn').onclick = clearAll;
     document.getElementById('confirmShipBtn').onclick = confirmShip;
@@ -541,7 +560,6 @@
             document.getElementById('shipDocInfo').classList.add('hidden');
             document.getElementById('shipBoxesList').classList.add('hidden');
         }
-        // 高亮按鈕樣式
         document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
         if (panel === 'receive') document.getElementById('tabReceiveBtn').classList.add('active');
         if (panel === 'return') document.getElementById('tabReturnBtn').classList.add('active');

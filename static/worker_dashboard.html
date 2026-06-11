@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
     <title>倉管員工作台</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -22,69 +22,79 @@
             background-color: #f9fafb;
             font-weight: 600;
         }
+        /* 手机优化 */
+        @media (max-width: 640px) {
+            .task-grid { gap: 0.75rem; }
+            .task-card { padding: 1rem 0.5rem; }
+            .task-icon { font-size: 2rem; }
+            .task-title { font-size: 1rem; }
+            .btn-mobile { padding: 0.75rem 1rem; font-size: 0.9rem; }
+            .welcome-text { font-size: 0.9rem; }
+        }
     </style>
 </head>
-<body class="bg-gray-100 p-6">
+<body class="bg-gray-100 p-4">
 <div class="max-w-7xl mx-auto">
-    <div class="flex justify-between items-center mb-6">
-        <h1 class="text-3xl font-bold">📦 倉管員工作台</h1>
+    <div class="flex justify-between items-center mb-4 flex-wrap gap-2">
+        <h1 class="text-2xl font-bold">📦 倉管員工作台</h1>
         <div class="space-x-2">
-            <a href="stock_query.html" class="bg-blue-500 text-white px-3 py-1 rounded text-sm">📊 庫存查詢</a>
-            <a href="history.html" class="bg-blue-500 text-white px-3 py-1 rounded text-sm">📜 歷史紀錄</a>
-            <a href="reprint_qr.html" class="bg-blue-500 text-white px-3 py-1 rounded text-sm">🖨️ QR列印</a>
-            <button onclick="logout()" class="bg-red-500 text-white px-3 py-1 rounded text-sm">登出</button>
+            <a href="stock_query.html" class="bg-blue-500 text-white px-3 py-2 rounded text-sm inline-block">📊 庫存查詢</a>
+            <a href="history.html" class="bg-blue-500 text-white px-3 py-2 rounded text-sm inline-block">📜 歷史紀錄</a>
+            <a href="reprint_qr.html" class="bg-blue-500 text-white px-3 py-2 rounded text-sm inline-block">🖨️ QR列印</a>
+            <button onclick="logout()" class="bg-red-500 text-white px-3 py-2 rounded text-sm">登出</button>
         </div>
     </div>
 
-    <p class="text-gray-600 mb-6" id="welcomeMessage">載入中...</p>
+    <p class="text-gray-600 mb-4 welcome-text" id="welcomeMessage">載入中...</p>
 
-    <!-- 任務統計卡片（新增） -->
-    <div id="taskStats" class="bg-white rounded-xl shadow p-5 mb-8" style="display: none;">
-        <h2 class="text-xl font-bold mb-3">📊 任務統計</h2>
-        <table class="data-table">
-            <thead>
-                <tr><th>任務類型</th><th>待處理數量</th> </thead>
-            <tbody id="statsTableBody">
-                <tr><td>入庫任務</td><td id="inboundStat">-</td></tr>
-                <tr><td>檢貨任務</td><td id="pickingStat">-</td></tr>
-                <tr><td>盤點任務</td><td id="stocktakeStat">-</td></tr>
-                <tr class="font-bold"><td>合計</td><td id="totalStat">-</td></tr>
-            </tbody>
-        </table>
-        <div class="mt-3 text-sm text-gray-500">※ 僅顯示未完成的任務數量</div>
+    <!-- 任務統計卡片（僅主管可見，倉管員不顯示） -->
+    <div id="taskStats" class="bg-white rounded-xl shadow p-4 mb-6" style="display: none;">
+        <h2 class="text-lg font-bold mb-2">📊 任務統計</h2>
+        <div class="overflow-x-auto">
+            <table class="data-table text-sm">
+                <thead class="bg-gray-50"><tr><th class="p-2">任務類型</th><th>待處理數量</th></tr></thead>
+                <tbody id="statsTableBody">
+                    <tr><td class="p-2">入庫任務</td><td id="inboundStat">-</td></tr>
+                    <tr><td class="p-2">檢貨任務</td><td id="pickingStat">-</td></tr>
+                    <tr><td class="p-2">盤點任務</td><td id="stocktakeStat">-</td></tr>
+                    <tr class="font-bold"><td class="p-2">合計</td><td id="totalStat">-</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="mt-2 text-xs text-gray-500">※ 僅顯示未完成的任務數量</div>
     </div>
 
-    <!-- 任務卡片區 -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div class="bg-white rounded-xl shadow p-5 card-hover cursor-pointer" onclick="redirectWithUser('my_inbound_tasks.html')">
-            <div class="text-4xl mb-2">📥</div>
-            <h2 class="text-xl font-bold text-blue-600">我的入庫任務</h2>
-            <p class="text-gray-500 mt-1">執行入庫作業</p>
+    <!-- 任務卡片區（手機優化：減少內邊距、增大點擊區域） -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6 task-grid">
+        <div class="bg-white rounded-xl shadow p-3 task-card card-hover cursor-pointer text-center" onclick="redirectWithUser('my_inbound_tasks.html')">
+            <div class="text-3xl mb-1 task-icon">📥</div>
+            <h2 class="text-md font-bold text-blue-600 task-title">入庫任務</h2>
+            <p class="text-xs text-gray-500">執行入庫</p>
         </div>
-        <div class="bg-white rounded-xl shadow p-5 card-hover cursor-pointer" onclick="redirectWithUser('my_picking_tasks.html')">
-            <div class="text-4xl mb-2">📦</div>
-            <h2 class="text-xl font-bold text-green-600">我的檢貨任務</h2>
-            <p class="text-gray-500 mt-1">分區發料作業</p>
+        <div class="bg-white rounded-xl shadow p-3 task-card card-hover cursor-pointer text-center" onclick="redirectWithUser('my_picking_tasks.html')">
+            <div class="text-3xl mb-1 task-icon">📦</div>
+            <h2 class="text-md font-bold text-green-600 task-title">檢貨任務</h2>
+            <p class="text-xs text-gray-500">分區發料</p>
         </div>
-        <div class="bg-white rounded-xl shadow p-5 card-hover cursor-pointer" onclick="redirectWithUser('my_tasks.html')">
-            <div class="text-4xl mb-2">📋</div>
-            <h2 class="text-xl font-bold text-purple-600">我的盤點任務</h2>
-            <p class="text-gray-500 mt-1">庫存盤點作業</p>
+        <div class="bg-white rounded-xl shadow p-3 task-card card-hover cursor-pointer text-center" onclick="redirectWithUser('my_tasks.html')">
+            <div class="text-3xl mb-1 task-icon">📋</div>
+            <h2 class="text-md font-bold text-purple-600 task-title">盤點任務</h2>
+            <p class="text-xs text-gray-500">庫存盤點</p>
         </div>
-        <div class="bg-white rounded-xl shadow p-5 card-hover cursor-pointer" onclick="location.href='material_transaction.html'">
-            <div class="text-4xl mb-2">📋</div>
-            <h2 class="text-xl font-bold text-orange-600">領退料單</h2>
-            <p class="text-gray-500 mt-1">非生產領料/退料</p>
+        <div class="bg-white rounded-xl shadow p-3 task-card card-hover cursor-pointer text-center" onclick="location.href='material_transaction.html'">
+            <div class="text-3xl mb-1 task-icon">📄</div>
+            <h2 class="text-md font-bold text-orange-600 task-title">領退料單</h2>
+            <p class="text-xs text-gray-500">臨時領退</p>
         </div>
     </div>
 
-    <div class="bg-white rounded-xl shadow p-5">
-        <h2 class="text-lg font-bold mb-2">📌 今日工作提示</h2>
-        <ul class="list-disc list-inside text-gray-700 space-y-1">
-            <li>點擊「我的入庫任務」可掃描料號完成入庫。</li>
-            <li>「我的檢貨任務」支援掃描條碼發料。</li>
-            <li>「我的盤點任務」可掃描料號錄入實盤數量。</li>
-            <li>「領退料單」用於現場臨時領料或退料，不經採購/製令流程。</li>
+    <div class="bg-white rounded-xl shadow p-4">
+        <h2 class="text-md font-bold mb-2">📌 今日工作提示</h2>
+        <ul class="list-disc list-inside text-gray-700 text-sm space-y-1">
+            <li>點擊「入庫任務」可掃描料號完成入庫。</li>
+            <li>「檢貨任務」支援掃描條碼發料。</li>
+            <li>「盤點任務」可掃描料號錄入實盤數量。</li>
+            <li>「領退料單」用於現場臨時領料/退料。</li>
         </ul>
     </div>
 </div>
@@ -94,27 +104,26 @@
     const token = localStorage.getItem('access_token');
     if (!token) { alert('請先登入'); location.href = 'login.html'; }
 
-    // 解析 URL 參數
     const urlParams = new URLSearchParams(window.location.search);
     const targetUser = urlParams.get('user');
     const currentUsername = localStorage.getItem('username');
     const currentRole = localStorage.getItem('user_role');
 
-    let displayName = currentUsername;
     let isViewingOther = false;
-
     if (targetUser && (currentRole === 'admin' || currentRole === 'warehouse')) {
         isViewingOther = true;
-        displayName = targetUser;
         document.getElementById('welcomeMessage').innerHTML = `👥 正在查看 <strong>${escapeHtml(targetUser)}</strong> 的工作台（管理員模式）`;
+        // 主管可以查看他人統計，但倉管員永遠不會進到這裡
         loadUserTasks(targetUser);
     } else {
         document.getElementById('welcomeMessage').innerHTML = `歡迎，${escapeHtml(currentUsername)} 👋`;
-        // 也可以加載自己的任務統計（可選）
-        loadUserTasks(currentUsername);
+        // 倉管員不顯示任務統計區塊，也不呼叫API
+        if (currentRole !== 'operator') {
+            // 非operator（如admin/warehouse查看自己）也顯示統計
+            loadUserTasks(currentUsername);
+        }
     }
 
-    // 輔助函數：跳轉時保留 ?user 參數（如果是管理員查看他人）
     function redirectWithUser(page) {
         if (isViewingOther && targetUser) {
             window.location.href = `${page}?user=${encodeURIComponent(targetUser)}`;
@@ -124,24 +133,22 @@
     }
 
     async function loadUserTasks(username) {
+        const statsDiv = document.getElementById('taskStats');
         try {
             const res = await fetch(`${API_BASE}/admin/user-tasks/${encodeURIComponent(username)}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
-            if (!res.ok) {
-                const err = await res.json();
-                throw new Error(err.detail || '載入失敗');
-            }
+            if (!res.ok) throw new Error(await res.text());
             const data = await res.json();
-            document.getElementById('taskStats').style.display = 'block';
+            statsDiv.style.display = 'block';
             document.getElementById('inboundStat').innerText = data.inbound_tasks || 0;
             document.getElementById('pickingStat').innerText = data.picking_tasks || 0;
             document.getElementById('stocktakeStat').innerText = data.stocktake_tasks || 0;
             document.getElementById('totalStat').innerText = data.total_tasks || 0;
         } catch (e) {
             console.error(e);
-            document.getElementById('taskStats').style.display = 'block';
-            document.getElementById('statsTableBody').innerHTML = `<tr><td colspan="2" class="text-center text-red-500">載入失敗：${e.message}</td></tr>`;
+            statsDiv.style.display = 'block';
+            document.getElementById('statsTableBody').innerHTML = `<tr><td colspan="2" class="text-center text-red-500 p-2">載入失敗：${e.message}</td></tr>`;
         }
     }
 
@@ -150,10 +157,7 @@
         return String(s).replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m]));
     }
 
-    function logout() {
-        localStorage.clear();
-        location.href = 'login.html';
-    }
+    function logout() { localStorage.clear(); location.href = 'login.html'; }
 </script>
 </body>
 </html>

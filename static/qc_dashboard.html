@@ -8,9 +8,8 @@
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <style>
-        /* 加深表格文字颜色 */
         .inspect-table td, .inspect-table th {
-            color: #1f2937; /* gray-800 */
+            color: #1f2937;
             border-color: #d1d5db;
         }
         .inspect-table input {
@@ -38,7 +37,6 @@
         </div>
     </div>
 
-    <!-- 品保 IQC 面板 -->
     <div id="iqcPanel" style="display:block;">
         <div class="bg-white p-5 rounded shadow">
             <div class="flex justify-between items-center mb-3">
@@ -138,7 +136,7 @@
                         <td class="p-2"><input type="number" class="pass-qty w-20 border text-center" data-code="${escapeHtml(d.material_code)}" value="0" min="0" step="1" onfocus="this.select()"></td>
                         <td class="p-2"><input type="number" class="fail-qty w-20 border text-center" data-code="${escapeHtml(d.material_code)}" value="0" min="0" step="1" onfocus="this.select()"></td>
                         <td class="p-2"><button class="clear-row clear-btn px-2 py-1 rounded text-xs" data-code="${escapeHtml(d.material_code)}">清除輸入</button></td>
-                    </td>
+                    </tr>
                 `;
             }).join('');
 
@@ -170,7 +168,6 @@
                 inp.addEventListener('change', () => updateByFail(inp, passInp, originalQty));
                 inp.addEventListener('input', () => updateByFail(inp, passInp, originalQty));
             });
-            // 清除按钮仅清除输入框的值，不清除任何数据
             document.querySelectorAll('.clear-row').forEach(btn => {
                 btn.onclick = () => {
                     const code = btn.dataset.code;
@@ -183,7 +180,6 @@
 
             const inspectArea = document.getElementById('inspectDetailArea');
             const scanInput = inspectArea.querySelector('#scanMaterialInput');
-            const scanBtn = inspectArea.querySelector('#iqcScanMaterialBtn');
             const scrollToRow = (code) => {
                 const row = [...document.querySelectorAll('#inspectItemsBody tr')].find(r => r.dataset.code === code);
                 if (row) {
@@ -192,7 +188,9 @@
                     setTimeout(() => row.style.backgroundColor = '', 1000);
                     const passInput = row.querySelector('.pass-qty');
                     if (passInput) passInput.focus();
-                } else { alert(`找不到料號: ${code}`); }
+                } else {
+                    alert(`找不到料號: ${code}`);
+                }
             };
             scanInput.onkeypress = (e) => {
                 if (e.key === 'Enter') {
@@ -201,9 +199,50 @@
                     scanInput.value = '';
                 }
             };
+
+            // ========== 新增真正的掃描功能 ==========
+            let html5QrCode = null;
+            async function startCamera() {
+                const readerDiv = document.createElement('div');
+                readerDiv.id = 'tempQrReader';
+                readerDiv.style.position = 'fixed';
+                readerDiv.style.top = '0';
+                readerDiv.style.left = '0';
+                readerDiv.style.width = '100%';
+                readerDiv.style.height = '100%';
+                readerDiv.style.backgroundColor = 'black';
+                readerDiv.style.zIndex = '1000';
+                readerDiv.innerHTML = `<div id="qr-reader" style="width:100%; height:100%;"></div><button id="closeReader" style="position:absolute; top:20px; right:20px; background:white; padding:8px; border-radius:8px;">關閉</button>`;
+                document.body.appendChild(readerDiv);
+                const qrReader = new Html5Qrcode("qr-reader");
+                html5QrCode = qrReader;
+                try {
+                    await qrReader.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } },
+                        (decodedText) => {
+                            qrReader.stop();
+                            document.body.removeChild(readerDiv);
+                            scanInput.value = decodedText;
+                            scrollToRow(decodedText);
+                            scanInput.value = '';
+                        },
+                        () => {}
+                    );
+                    document.getElementById('closeReader').onclick = () => {
+                        qrReader.stop();
+                        document.body.removeChild(readerDiv);
+                    };
+                } catch(e) {
+                    alert('無法啟動相機: ' + e);
+                    document.body.removeChild(readerDiv);
+                }
+            }
+            const scanBtn = inspectArea.querySelector('#iqcScanMaterialBtn');
+            // 原本的掃描按鈕事件改為啟動相機
             scanBtn.onclick = () => {
-                scrollToRow(scanInput.value.trim());
-                scanInput.value = '';
+                if (html5QrCode) {
+                    html5QrCode.stop().catch(console.warn);
+                }
+                startCamera();
             };
 
             document.getElementById('submitIQC').onclick = async () => {
