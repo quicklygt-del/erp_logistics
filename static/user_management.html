@@ -17,7 +17,6 @@
         </div>
     </div>
 
-    <!-- 篩選與新增 -->
     <div class="bg-white rounded shadow p-4 mb-4 flex flex-wrap gap-3 items-end">
         <div class="flex-1">
             <label class="block text-sm font-medium">篩選角色</label>
@@ -35,23 +34,14 @@
         <button id="addUserBtn" class="bg-green-600 text-white px-4 py-2 rounded">➕ 新增用戶</button>
     </div>
 
-    <!-- 用戶列表 -->
     <div class="bg-white rounded shadow overflow-x-auto">
         <table class="min-w-full border text-sm">
             <thead class="bg-gray-50">
                 <tr>
-                    <th class="p-2">用戶名</th>
-                    <th>姓名</th>
-                    <th>角色</th>
-                    <th>部門</th>
-                    <th>狀態</th>
-                    <th>快速登入令牌</th>
-                    <th>操作</th>
+                    <th class="p-2">用戶名</th><th>姓名</th><th>角色</th><th>部門</th><th>狀態</th><th>快速登入令牌</th><th>操作</th>
                 </tr>
             </thead>
-            <tbody id="userTableBody">
-                <tr><td colspan="7" class="text-center py-4">載入中...</td></tr>
-            </tbody>
+            <tbody id="userTableBody"><tr><td colspan="7" class="text-center py-4">載入中...</td></tr></tbody>
         </table>
     </div>
 </div>
@@ -87,12 +77,12 @@
     </div>
 </div>
 
-<!-- 快速登入 QR 碼模態框 -->
+<!-- QR 碼模態框 -->
 <div id="qrModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
     <div class="bg-white rounded-xl p-6 w-96 text-center">
         <h3 class="text-lg font-bold mb-3">進場 QR 碼</h3>
         <div id="qrCodeContainer" class="flex justify-center my-4"></div>
-        <p id="qrTokenInfo" class="text-xs text-gray-500 break-all mb-3"></p>
+        <p id="qrRoleInfo" class="text-sm text-gray-600 mb-3"></p>
         <div class="flex justify-center gap-2">
             <button id="printQrBtn" class="bg-blue-600 text-white px-3 py-1 rounded">列印</button>
             <button id="closeQrModal" class="bg-gray-300 px-3 py-1 rounded">關閉</button>
@@ -126,16 +116,13 @@
         try {
             const users = await apiFetch(url);
             const tbody = document.getElementById('userTableBody');
-            if (!users.length) {
-                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4">暫無用戶</tbody>';
-                return;
-            }
+            if (!users.length) { tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4">暫無用戶</tbody>'; return; }
             tbody.innerHTML = users.map(u => {
                 const isFixedRole = ['admin', 'warehouse', 'receiver', 'qc', 'packer'].includes(u.role);
                 const showDelete = !isFixedRole;
                 const tokenButton = u.quick_login_token 
-                    ? `<button class="qr-btn text-blue-600 text-xs" data-username="${escapeHtml(u.username)}">🔑 顯示QR碼</button>`
-                    : `<button class="generate-token-btn bg-green-500 text-white px-2 py-1 rounded text-xs" data-username="${escapeHtml(u.username)}">🎫 進場QR碼</button>`;
+                    ? `<button class="qr-btn text-blue-600 text-xs" data-username="${escapeHtml(u.username)}" data-token="${escapeHtml(u.quick_login_token)}" data-role="${escapeHtml(u.role)}">🔑 顯示QR碼</button>`
+                    : `<button class="generate-token-btn bg-green-500 text-white px-2 py-1 rounded text-xs" data-username="${escapeHtml(u.username)}" data-role="${escapeHtml(u.role)}">🎫 進場QR碼</button>`;
                 return `
                     <tr class="border-b">
                         <td class="p-2">${escapeHtml(u.username)}</td>
@@ -149,15 +136,15 @@
                             <button class="reset-pwd-btn bg-purple-500 text-white px-2 py-1 rounded text-xs" data-id="${u.id}" data-username="${escapeHtml(u.username)}">重置密碼</button>
                             ${showDelete ? `<button class="delete-btn bg-red-500 text-white px-2 py-1 rounded text-xs" data-id="${u.id}" data-username="${escapeHtml(u.username)}">刪除</button>` : ''}
                         </td>
-                     </tr>
+                      </tr>
                 `;
             }).join('');
-            // 綁定事件
+
             document.querySelectorAll('.edit-btn').forEach(btn => btn.onclick = () => openEditModal(btn.dataset));
             document.querySelectorAll('.delete-btn').forEach(btn => btn.onclick = () => deleteUser(btn.dataset.id, btn.dataset.username));
             document.querySelectorAll('.reset-pwd-btn').forEach(btn => btn.onclick = () => resetPassword(btn.dataset.id, btn.dataset.username));
-            document.querySelectorAll('.generate-token-btn').forEach(btn => btn.onclick = () => generateToken(btn.dataset.username));
-            document.querySelectorAll('.qr-btn').forEach(btn => btn.onclick = () => showQR(btn.dataset.username));
+            document.querySelectorAll('.generate-token-btn').forEach(btn => btn.onclick = () => generateAndShowQR(btn.dataset.username, btn.dataset.role));
+            document.querySelectorAll('.qr-btn').forEach(btn => btn.onclick = () => showQR(btn.dataset.token, btn.dataset.role));
         } catch(e) { alert('載入失敗: ' + e.message); }
     }
 
@@ -240,32 +227,37 @@
         } catch(e) { alert('刪除失敗: ' + e.message); }
     }
 
-    async function generateToken(username) {
+    // 生成 token 並立即顯示 QR 碼（直接使用後端回傳的 token，前端拼接正確 URL）
+    async function generateAndShowQR(username, role) {
         try {
             const users = await apiFetch(`${API_BASE}/admin/users/`);
             const user = users.find(u => u.username === username);
             if (!user) throw new Error('用戶不存在');
             const data = await apiFetch(`${API_BASE}/admin/users/${user.id}/generate-qr-token`, { method: 'POST' });
-            alert(`進場QR碼已生成，請點擊「顯示QR碼」查看並列印。`);
-            loadUsers();
-        } catch(e) { alert('生成失敗: ' + e.message); }
-    }
-
-    let currentQRToken = null;
-    async function showQR(username) {
-        try {
-            const users = await apiFetch(`${API_BASE}/admin/users/`);
-            const user = users.find(u => u.username === username);
-            if (!user || !user.quick_login_token) { alert('該用戶尚未生成進場QR碼'); return; }
-            const token = user.quick_login_token;
-            currentQRToken = token;
-            const qrUrl = `${window.location.origin}/static/quick_login.html?token=${encodeURIComponent(token)}`;
+            // 不使用後端回傳的 qr_url（可能包含 127.0.0.1），改為前端動態拼接
+            const qrUrl = `${window.location.origin}/static/quick_login.html?token=${encodeURIComponent(data.token)}`;
+            // 重新加載用戶列表（讓按鈕變為「顯示QR碼」）
+            await loadUsers();
+            // 直接在 QR 模態框中生成二維碼（傳入 URL 和角色）
             const container = document.getElementById('qrCodeContainer');
             container.innerHTML = '';
             new QRCode(container, { text: qrUrl, width: 200, height: 200 });
-            document.getElementById('qrTokenInfo').innerHTML = `掃碼後將自動登入到 ${user.role} 工作台`;
+            const roleMap = { admin: '管理員', warehouse: '倉儲主管', receiver: '收發', qc: '品保', packer: '包裝', operator: '倉管員' };
+            document.getElementById('qrRoleInfo').innerHTML = `掃碼後將自動登入到 ${roleMap[role] || role} 工作台`;
             document.getElementById('qrModal').classList.remove('hidden');
-        } catch(e) { alert('無法顯示 QR: ' + e.message); }
+        } catch(e) { alert('生成失敗: ' + e.message); }
+    }
+
+    // 顯示已存在的 QR 碼（使用已有的 token）
+    function showQR(token, role) {
+        if (!token) { alert('無效的令牌'); return; }
+        const qrUrl = `${window.location.origin}/static/quick_login.html?token=${encodeURIComponent(token)}`;
+        const container = document.getElementById('qrCodeContainer');
+        container.innerHTML = '';
+        new QRCode(container, { text: qrUrl, width: 200, height: 200 });
+        const roleMap = { admin: '管理員', warehouse: '倉儲主管', receiver: '收發', qc: '品保', packer: '包裝', operator: '倉管員' };
+        document.getElementById('qrRoleInfo').innerHTML = `掃碼後將自動登入到 ${roleMap[role] || role} 工作台`;
+        document.getElementById('qrModal').classList.remove('hidden');
     }
 
     document.getElementById('closeQrModal').onclick = () => document.getElementById('qrModal').classList.add('hidden');
@@ -273,11 +265,7 @@
         const img = document.querySelector('#qrCodeContainer img');
         if (!img) return;
         const win = window.open('');
-        win.document.write(`
-            <html><head><title>進場 QR 碼</title></head>
-            <body style="text-align:center;"><img src="${img.src}" style="width:200px;"><p>掃碼登入</p>
-            <script>window.onload=function(){window.print();window.close();}<\/script></body></html>
-        `);
+        win.document.write(`<html><head><title>進場 QR 碼</title></head><body style="text-align:center;"><img src="${img.src}" style="width:200px;"><p>掃碼登入</p><script>window.onload=function(){window.print();window.close();}<\/script></body></html>`);
     };
 
     document.getElementById('filterBtn').onclick = loadUsers;
