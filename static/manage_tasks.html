@@ -5,7 +5,33 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>盤點管理系統（主管）</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>.modal { transition: opacity 0.2s ease; }</style>
+    <style>
+        .modal { transition: opacity 0.2s ease; }
+        /* 統一表格邊框樣式 */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .data-table th, .data-table td {
+            border: 1px solid #e5e7eb;
+            padding: 0.5rem;
+            text-align: left;
+            vertical-align: top;
+        }
+        .data-table th {
+            background-color: #f9fafb;
+            font-weight: 600;
+        }
+        /* 設定盤點單列表欄位寬度 */
+        .data-table th:nth-child(1) { width: 12%; }  /* 單號 */
+        .data-table th:nth-child(2) { width: 8%; }   /* 名稱 */
+        .data-table th:nth-child(3) { width: 10%; }  /* 倉庫 */
+        .data-table th:nth-child(4) { width: 8%; }   /* 類型 */
+        .data-table th:nth-child(5) { width: 10%; }  /* 狀態 */
+        .data-table th:nth-child(6) { width: 15%; }  /* 指派給 */
+        .data-table th:nth-child(7) { width: 8%; }   /* 總項數 */
+        .data-table th:nth-child(8) { width: 12%; }  /* 操作 */
+    </style>
 </head>
 <body class="bg-gray-100 p-6">
 <div class="max-w-7xl mx-auto">
@@ -58,12 +84,15 @@
             <button id="refreshBtn" class="bg-gray-600 text-white px-3 py-1 rounded">重新整理</button>
         </div>
         <div class="overflow-x-auto">
-            <table class="min-w-full border text-sm">
+            <table class="data-table">
                 <thead class="bg-gray-50">
-                    <tr><th>單號</th><th>名稱</th><th>倉庫</th><th>類型</th><th>狀態</th><th>指派給</th><th>總項數</th><th>操作</th></tr>
+                    <tr>
+                        <th>單號</th><th>名稱</th><th>倉庫</th><th>類型</th>
+                        <th>狀態</th><th>指派給</th><th>總項數</th><th>操作</th>
+                    </tr>
                 </thead>
                 <tbody id="tasksTbody">
-                    <tr><td colspan="8" class="text-center py-4">載入中...</tbody>
+                    <tr><td colspan="8" class="text-center py-4">載入中...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -180,11 +209,10 @@
             const sheets = await apiFetch(`${API_BASE}/inventory/sheets`);
             const tbody = document.getElementById('tasksTbody');
             if (!sheets.length) {
-                tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4">暫無盤點單</tbody>';
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4">暫無盤點單</td></tr>';
                 return;
             }
             tbody.innerHTML = sheets.map(sheet => {
-                // 允許刪除的狀態：待指派 或 待盤點（未開始）
                 const canDelete = sheet.status === '待指派' || sheet.status === '待盤點';
                 return `
                     <tr data-sheet="${sheet.sheet_no}">
@@ -202,11 +230,9 @@
                     </tr>
                 `;
             }).join('');
-            // 指派按鈕
             document.querySelectorAll('.assign-sheet').forEach(btn => {
                 btn.onclick = () => { currentSheetNo = btn.dataset.sheet; showAssignModal(); };
             });
-            // 刪除按鈕
             document.querySelectorAll('.delete-sheet').forEach(btn => {
                 btn.onclick = async () => {
                     if (confirm(`確定刪除盤點單 ${btn.dataset.sheet} 嗎？`)) {
@@ -221,9 +247,9 @@
         } catch(e) {
             console.error(e);
             if (e.message === 'Forbidden') {
-                document.getElementById('tasksTbody').innerHTML = `<tr><td colspan="8" class="text-center py-4 text-red-500">權限不足，請使用主管或管理員帳號登入</tbody>`;
+                document.getElementById('tasksTbody').innerHTML = `<tr><td colspan="8" class="text-center py-4 text-red-500">權限不足，請使用主管或管理員帳號登入</td></tr>`;
             } else {
-                document.getElementById('tasksTbody').innerHTML = `</table><td colspan="8" class="text-center py-4 text-red-500">載入失敗: ${e.message}</tbody>`;
+                document.getElementById('tasksTbody').innerHTML = `<tr><td colspan="8" class="text-center py-4 text-red-500">載入失敗: ${e.message}</td></tr>`;
             }
         }
     }

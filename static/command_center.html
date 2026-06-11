@@ -9,7 +9,6 @@
         .card-hover { transition: transform 0.2s, box-shadow 0.2s; }
         .card-hover:hover { transform: translateY(-4px); box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
         .sticky-header th { position: sticky; top: 0; background-color: #f9fafb; }
-        /* 统一样式：表格边框和固定布局 */
         .data-table {
             table-layout: fixed;
             width: 100%;
@@ -26,23 +25,20 @@
             background-color: #f9fafb;
             font-weight: 600;
         }
-        /* 仓管员负载表列宽比例 */
-        .worker-table th:nth-child(1) { width: 25%; }  /* 倉管員 */
-        .worker-table th:nth-child(2) { width: 10%; }  /* 入庫 */
-        .worker-table th:nth-child(3) { width: 10%; }  /* 檢貨 */
-        .worker-table th:nth-child(4) { width: 10%; }  /* 盤點 */
-        .worker-table th:nth-child(5) { width: 10%; }  /* 合計 */
-        .worker-table th:nth-child(6) { width: 15%; }  /* 操作 */
-        /* 库存预警表列宽 */
-        .stock-table th:nth-child(1) { width: 15%; }  /* 料號 */
-        .stock-table th:nth-child(2) { width: 25%; }  /* 品名 */
-        .stock-table th:nth-child(3) { width: 15%; }  /* 主儲倉庫存 */
-        .stock-table th:nth-child(4) { width: 15%; }  /* 安全庫存 */
-        .stock-table th:nth-child(5) { width: 20%; }  /* 儲位 */
-        /* 超时预警表列宽 */
-        .timeout-table th:nth-child(1) { width: 40%; }  /* 單據/箱號 */
-        .timeout-table th:nth-child(2) { width: 30%; }  /* 節點 */
-        .timeout-table th:nth-child(3) { width: 20%; }  /* 已停留(小時) */
+        .worker-table th:nth-child(1) { width: 25%; }
+        .worker-table th:nth-child(2) { width: 10%; }
+        .worker-table th:nth-child(3) { width: 10%; }
+        .worker-table th:nth-child(4) { width: 10%; }
+        .worker-table th:nth-child(5) { width: 10%; }
+        .worker-table th:nth-child(6) { width: 15%; }
+        .stock-table th:nth-child(1) { width: 15%; }
+        .stock-table th:nth-child(2) { width: 25%; }
+        .stock-table th:nth-child(3) { width: 15%; }
+        .stock-table th:nth-child(4) { width: 15%; }
+        .stock-table th:nth-child(5) { width: 20%; }
+        .timeout-table th:nth-child(1) { width: 40%; }
+        .timeout-table th:nth-child(2) { width: 30%; }
+        .timeout-table th:nth-child(3) { width: 20%; }
     </style>
 </head>
 <body class="bg-gray-100 p-6">
@@ -104,13 +100,13 @@
                     </tr>
                 </thead>
                 <tbody id="workerLoadTbody">
-                    <tr><td colspan="6" class="text-center">載入中...</td><\/tr>
+                    <tr><td colspan="6" class="text-center">載入中...<\/tr>
                 </tbody>
             </table>
         </div>
     </div>
 
-    <!-- 庫存預警卡片（簡要） -->
+    <!-- 庫存預警卡片 -->
     <div class="bg-white rounded-xl shadow p-5 mb-8">
         <h2 class="text-xl font-bold mb-3">⚠️ 庫存預警 (低於安全庫存)</h2>
         <div class="overflow-x-auto max-h-64 overflow-y-auto">
@@ -125,13 +121,13 @@
                     </tr>
                 </thead>
                 <tbody id="lowStockPreviewTbody">
-                    <tr><td colspan="5" class="text-center">載入中...</td><\/tr>
+                    <tr><td colspan="5" class="text-center">載入中...<\/tr>
                 </tbody>
             </table>
         </div>
     </div>
 
-    <!-- 停留超時預警卡片（簡要） -->
+    <!-- 停留超時預警卡片 -->
     <div class="bg-white rounded-xl shadow p-5">
         <h2 class="text-xl font-bold mb-3">⏰ 停留超時預警</h2>
         <div class="overflow-x-auto max-h-64 overflow-y-auto">
@@ -144,7 +140,7 @@
                     </tr>
                 </thead>
                 <tbody id="timeoutPreviewTbody">
-                    <tr><td colspan="3" class="text-center">載入中...</td><\/tr>
+                    <tr><td colspan="3" class="text-center">載入中...<\/tr>
                 </tbody>
             </table>
         </div>
@@ -258,22 +254,25 @@
             document.getElementById('stocktakeCount').innerText = data.stocktake_pending || 0;
             const tbody = document.getElementById('workerLoadTbody');
             if (!data.worker_load || data.worker_load.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4">暫無指派任務<\/td><\/tr>';
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4">暫無指派任務</td></tr>';
                 return;
             }
             tbody.innerHTML = data.worker_load.map(w => `
                 <tr>
-                    <td class="p-2">${escapeHtml(w.assigned_to)}<\/td>
-                    <td class="p-2 text-center">${w.inbound_count || 0}<\/td>
-                    <td class="p-2 text-center">${w.picking_count || 0}<\/td>
-                    <td class="p-2 text-center">${w.stocktake_count || 0}<\/td>
-                    <td class="p-2 text-center">${w.task_count || 0}<\/td>
-                    <td class="p-2 text-center"><button class="view-tasks bg-blue-500 text-white px-2 py-1 rounded text-xs" data-worker="${escapeHtml(w.assigned_to)}">查看任務<\/button><\/td>
-                <\/tr>
+                    <td class="p-2">${escapeHtml(w.assigned_to)}</td>
+                    <td class="p-2 text-center">${w.inbound_count || 0}</td>
+                    <td class="p-2 text-center">${w.picking_count || 0}</td>
+                    <td class="p-2 text-center">${w.stocktake_count || 0}</td>
+                    <td class="p-2 text-center">${w.task_count || 0}</td>
+                    <td class="p-2 text-center"><button class="view-tasks bg-blue-500 text-white px-2 py-1 rounded text-xs" data-worker="${escapeHtml(w.assigned_to)}">查看任務</button></td>
+                </tr>
             `).join('');
+            // ========== 修改點：點擊按鈕時跳轉到 worker_dashboard.html 並帶上使用者名稱 ==========
             document.querySelectorAll('.view-tasks').forEach(btn => {
                 btn.onclick = () => {
-                    alert(`功能開發中：可跳轉至 ${btn.dataset.worker} 的任務清單`);
+                    const workerName = btn.dataset.worker;
+                    // 新分頁開啟 worker_dashboard.html，帶 ?user=參數
+                    window.open(`/worker_dashboard.html?user=${encodeURIComponent(workerName)}`, '_blank');
                 };
             });
         } catch (e) {
@@ -295,38 +294,38 @@
             const lowStock = data.low_stock_items ? data.low_stock_items.slice(0, 5) : [];
             const lowStockTbody = document.getElementById('lowStockPreviewTbody');
             if (lowStock.length === 0) {
-                lowStockTbody.innerHTML = '<tr><td colspan="5" class="text-center py-4">✅ 暫無低於安全庫存物料<\/td><\/tr>';
+                lowStockTbody.innerHTML = '<tr><td colspan="5" class="text-center py-4">✅ 暫無低於安全庫存物料</td></tr>';
             } else {
                 lowStockTbody.innerHTML = lowStock.map(item => `
                     <tr>
-                        <td class="p-2">${escapeHtml(item.material_code)}<\/td>
-                        <td class="p-2">${escapeHtml(item.name)}<\/td>
-                        <td class="p-2 text-center">${item.main_stock}<\/td>
-                        <td class="p-2 text-center">${item.safety_stock}<\/td>
-                        <td class="p-2">${escapeHtml(item.location || '')}<\/td>
-                    <\/tr>
+                        <td class="p-2">${escapeHtml(item.material_code)}</td>
+                        <td class="p-2">${escapeHtml(item.name)}</td>
+                        <td class="p-2 text-center">${item.main_stock}</td>
+                        <td class="p-2 text-center">${item.safety_stock}</td>
+                        <td class="p-2">${escapeHtml(item.location || '')}</td>
+                    </tr>
                 `).join('');
             }
             const timeout = data.timeout_alerts ? data.timeout_alerts.slice(0, 5) : [];
             const timeoutTbody = document.getElementById('timeoutPreviewTbody');
             if (timeout.length === 0) {
-                timeoutTbody.innerHTML = '<tr><td colspan="3" class="text-center py-4">✅ 暫無超時停留單據<\/td><\/tr>';
+                timeoutTbody.innerHTML = '<tr><td colspan="3" class="text-center py-4">✅ 暫無超時停留單據</td></tr>';
             } else {
                 timeoutTbody.innerHTML = timeout.map(alert => `
                     <tr>
-                        <td class="p-2">${escapeHtml(alert.doc_number || alert.box_number || '-')}<\/td>
-                        <td class="p-2">${escapeHtml(alert.node_type)}<\/td>
-                        <td class="p-2 text-center">${alert.waiting_hours}<\/td>
-                    <\/tr>
+                        <td class="p-2">${escapeHtml(alert.doc_number || alert.box_number || '-')}</td>
+                        <td class="p-2">${escapeHtml(alert.node_type)}</td>
+                        <td class="p-2 text-center">${alert.waiting_hours}</td>
+                    </tr>
                 `).join('');
             }
         } catch (e) {
             console.error('載入預警失敗', e);
             if (e.message !== 'Unauthorized') {
                 document.getElementById('lowStockPreviewTbody').innerHTML =
-                    '<tr><td colspan="5" class="text-center py-4 text-gray-400">預警資料載入失敗<\/td><\/tr>';
+                    '<tr><td colspan="5" class="text-center py-4 text-gray-400">預警資料載入失敗</td></tr>';
                 document.getElementById('timeoutPreviewTbody').innerHTML =
-                    '<tr><td colspan="3" class="text-center py-4 text-gray-400">預警資料載入失敗<\/td><\/tr>';
+                    '<tr><td colspan="3" class="text-center py-4 text-gray-400">預警資料載入失敗</td></tr>';
             }
         }
     }
