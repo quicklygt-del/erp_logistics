@@ -348,4 +348,5 @@ async def root():
     return RedirectResponse(url="/login.html")
 
 # 靜態檔案必須掛在所有 API 路由之後，否則會攔截 /api/* 請求導致 404
+app.mount("/static", StaticFiles(directory="static"), name="static_prefixed")
 app.mount("/", StaticFiles(directory="static", html=True), name="static")

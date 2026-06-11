@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
@@ -142,7 +142,7 @@ async def delete_user(user_id: int, current_user: TokenData = Depends(get_curren
         await conn.close()
 
 @router.post("/{user_id}/generate-qr-token")
-async def generate_qr_token(user_id: int, current_user: TokenData = Depends(get_current_user)):
+async def generate_qr_token(user_id: int, request: Request, current_user: TokenData = Depends(get_current_user)):
     if current_user.role != 'admin':
         raise HTTPException(403, "只有管理员可以生成QR码")
     import secrets
@@ -156,7 +156,8 @@ async def generate_qr_token(user_id: int, current_user: TokenData = Depends(get_
             "UPDATE system_users SET quick_login_token = $1, updated_at = NOW() WHERE id = $2",
             new_token, user_id
         )
-        return {"token": new_token, "qr_url": f"http://127.0.0.1:8000/static/quick_login.html?token={new_token}"}
+        base = str(request.base_url).rstrip("/")
+        return {"token": new_token, "qr_url": f"{base}/quick_login.html?token={new_token}"}
     finally:
         await conn.close()
 

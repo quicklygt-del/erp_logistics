@@ -235,7 +235,7 @@
             if (!user) throw new Error('用戶不存在');
             const data = await apiFetch(`${API_BASE}/admin/users/${user.id}/generate-qr-token`, { method: 'POST' });
             // 不使用後端回傳的 qr_url（可能包含 127.0.0.1），改為前端動態拼接
-            const qrUrl = `${window.location.origin}/static/quick_login.html?token=${encodeURIComponent(data.token)}`;
+            const qrUrl = `${window.location.origin}/quick_login.html?token=${encodeURIComponent(data.token)}`;
             // 重新加載用戶列表（讓按鈕變為「顯示QR碼」）
             await loadUsers();
             // 直接在 QR 模態框中生成二維碼（傳入 URL 和角色）
@@ -251,7 +251,7 @@
     // 顯示已存在的 QR 碼（使用已有的 token）
     function showQR(token, role) {
         if (!token) { alert('無效的令牌'); return; }
-        const qrUrl = `${window.location.origin}/static/quick_login.html?token=${encodeURIComponent(token)}`;
+        const qrUrl = `${window.location.origin}/quick_login.html?token=${encodeURIComponent(token)}`;
         const container = document.getElementById('qrCodeContainer');
         container.innerHTML = '';
         new QRCode(container, { text: qrUrl, width: 200, height: 200 });
