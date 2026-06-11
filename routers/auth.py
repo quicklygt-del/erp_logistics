@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status, Query
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -113,6 +113,27 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 
 @router.post("/quick-login", response_model=Token)
 async def quick_login(token: str):
+    conn = await get_db_connection()
+    try:
+        row = await conn.fetchrow(
+            "SELECT username, role, is_active FROM system_users WHERE quick_login_token = $1 AND is_active = true",
+            token
+        )
+        if not row:
+            raise HTTPException(status_code=401, detail="Invalid quick login token")
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = create_access_token(
+            data={"sub": row['username'], "role": row['role']},
+            expires_delta=access_token_expires
+        )
+        return {"access_token": access_token, "token_type": "bearer"}
+    finally:
+        await conn.close()
+
+# ========== 新增：支援 GET 請求的快速登入（與前端保持一致） ==========
+@router.get("/quick-login", response_model=Token)
+async def quick_login_get(token: str = Query(...)):
+    """支援 GET 請求，token 作為查詢參數"""
     conn = await get_db_connection()
     try:
         row = await conn.fetchrow(
