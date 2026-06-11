@@ -9,3 +9,4 @@ xlsxwriter
 python-jose[cryptography]
 passlib
 python-dateutil
+python-dotenv
