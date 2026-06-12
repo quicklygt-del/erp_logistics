@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
     <title>收發工作台</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
@@ -10,25 +10,70 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
         .tab-btn.active { background-color: #2563eb !important; color: white !important; }
+        /* 側邊選單樣式 */
+        .menu-panel {
+            position: fixed;
+            top: 0;
+            right: -280px;
+            width: 280px;
+            height: 100%;
+            background: white;
+            box-shadow: -2px 0 12px rgba(0,0,0,0.15);
+            z-index: 50;
+            transition: right 0.3s ease;
+            padding-top: 70px;
+        }
+        .menu-panel.open {
+            right: 0;
+        }
+        .menu-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            z-index: 40;
+            display: none;
+        }
+        .menu-overlay.show {
+            display: block;
+        }
+        /* 手機觸控優化 */
+        .touch-btn {
+            min-height: 48px;
+        }
+        @media (max-width: 640px) {
+            .btn-text {
+                font-size: 0.85rem;
+            }
+        }
     </style>
 </head>
 <body class="bg-gray-100 p-4">
+<!-- 側邊選單遮罩 -->
+<div id="menuOverlay" class="menu-overlay" onclick="closeMenu()"></div>
+<!-- 側邊選單內容 -->
+<div id="menuPanel" class="menu-panel">
+    <div class="px-4 py-2 border-b">
+        <h3 class="text-lg font-bold">功能選單</h3>
+    </div>
+    <div class="flex flex-col">
+        <a href="stock_query.html" class="block px-4 py-3 hover:bg-gray-100 border-b">📊 庫存查詢</a>
+        <a href="history.html" class="block px-4 py-3 hover:bg-gray-100 border-b">📜 歷史紀錄</a>
+        <a href="reprint_qr.html" class="block px-4 py-3 hover:bg-gray-100 border-b">🖨️ QR列印</a>
+        <button onclick="logout()" class="text-left px-4 py-3 hover:bg-gray-100 border-b text-red-600">🔓 登出</button>
+    </div>
+</div>
+
 <div class="max-w-7xl mx-auto">
     <div class="flex justify-between items-center mb-4">
         <h1 class="text-2xl font-bold">📦 收發工作台</h1>
-        <div class="space-x-2">
-            <a href="stock_query.html" class="bg-blue-500 text-white px-3 py-2 rounded text-sm">庫存查詢</a>
-            <a href="history.html" class="bg-blue-500 text-white px-3 py-2 rounded text-sm">歷史紀錄</a>
-            <a href="reprint_qr.html" class="bg-blue-500 text-white px-3 py-2 rounded text-sm">QR列印</a>
-            <button onclick="logout()" class="bg-red-500 text-white px-3 py-2 rounded text-sm">登出</button>
-        </div>
+        <button id="menuBtn" class="bg-gray-200 p-2 rounded-full w-12 h-12 flex items-center justify-center text-xl">☰</button>
     </div>
 
     <!-- 頁籤切換按鈕 -->
     <div class="flex flex-wrap gap-2 mb-4 border-b pb-2">
-        <button id="tabReceiveBtn" class="tab-btn px-4 py-2 rounded-t-lg bg-gray-200">📥 進貨收領</button>
-        <button id="tabReturnBtn" class="tab-btn px-4 py-2 rounded-t-lg bg-gray-200">↩️ 待退貨</button>
-        <button id="tabShipBtn" class="tab-btn px-4 py-2 rounded-t-lg bg-gray-200">📤 寄件出貨</button>
+        <button id="tabReceiveBtn" class="tab-btn px-4 py-3 rounded-t-lg bg-gray-200 font-semibold">📥 進貨收領</button>
+        <button id="tabReturnBtn" class="tab-btn px-4 py-3 rounded-t-lg bg-gray-200 font-semibold">↩️ 待退貨</button>
+        <button id="tabShipBtn" class="tab-btn px-4 py-3 rounded-t-lg bg-gray-200 font-semibold">📤 寄件出貨</button>
     </div>
 
     <!-- 進貨收領面板 -->
@@ -48,7 +93,7 @@
             <table class="min-w-full border text-sm">
                 <thead><tr><th>料號</th><th>品名</th><th>數量</th><th>操作</th></tr></thead>
                 <tbody id="receiveItemList"></tbody>
-            </table>
+            </td>
         </div>
         <button id="confirmReceiveBtn" class="bg-green-600 text-white px-5 py-3 rounded mt-3 w-full md:w-auto">✅ 確認收料存檔</button>
         <div id="receiveResultMsg" class="text-sm mt-2"></div>
@@ -113,10 +158,21 @@
 </div>
 
 <script>
+    // ==================== 側邊選單控制 ====================
+    function closeMenu() {
+        document.getElementById('menuPanel').classList.remove('open');
+        document.getElementById('menuOverlay').classList.remove('show');
+    }
+    document.getElementById('menuBtn').onclick = () => {
+        document.getElementById('menuPanel').classList.add('open');
+        document.getElementById('menuOverlay').classList.add('show');
+    };
+
+    // ==================== 以下為原有所有 JavaScript 功能（完全保留） ====================
     const API_BASE = "/api/v1";
     let token = localStorage.getItem('access_token');
     if (!token) { alert('請先登入'); location.href = 'login.html'; }
-    let activeScanner = null; // 追蹤目前使用的掃描器實例
+    let activeScanner = null;
 
     async function apiFetch(url, opts = {}) {
         opts.headers = {
@@ -137,9 +193,8 @@
 
     function escapeHtml(s) { if (!s) return ''; return s.replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m])); }
 
-    // ========== 統一的相機掃描函數（使用 html5-qrcode）==========
+    // ========== 統一的相機掃描函數 ==========
     async function startCamera(onSuccess) {
-        // 關閉已存在的掃描器
         if (activeScanner) {
             try { await activeScanner.stop(); } catch(e) { console.warn(e); }
             activeScanner = null;
@@ -461,7 +516,7 @@
 
     function renderShipItems() {
         const tbody = document.getElementById('shipItemsTbody');
-        if (shipItemsMap.size === 0) { tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4">暫無物料</tbody>'; return; }
+        if (shipItemsMap.size === 0) { tbody.innerHTML = '</table><td colspan="4" class="text-center py-4">暫無物料</tbody>'; return; }
         tbody.innerHTML = Array.from(shipItemsMap.entries()).map(([code, item]) => `
             <tr>
                 <td class="p-2">${escapeHtml(code)}</td>
