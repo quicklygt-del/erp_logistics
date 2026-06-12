@@ -65,6 +65,14 @@
     }
     function escapeHtml(s) { return s.replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m])); }
 
+    // 強化清理：移除控制字符、零寬空格、BOM 等
+    function cleanMaterialCode(code) {
+        if (!code) return '';
+        // 移除非打印字符（除普通空格、字母、數字、連字符、底線、中文、日文等常見字符外）
+        // 這裡簡化為：保留字母數字中文常見符號，移除其他控制字符
+        return code.replace(/[\x00-\x1F\x7F\u200B-\u200F\uFEFF]/g, '').trim();
+    }
+
     async function loadTasks() {
         try {
             const tasks = await apiFetch(`${API_BASE}/inventory/my-tasks`);
@@ -156,17 +164,22 @@
     }
 
     async function submitCount(materialCode, qty) {
+        // 再次清理
+        const cleanCode = cleanMaterialCode(materialCode);
         try {
             await apiFetch(`${API_BASE}/inventory/sheets/${currentSheetNo}/scan`, {
                 method: 'POST',
-                body: JSON.stringify({ material_code: materialCode, counted_qty: qty, operator: currentUsername })
+                body: JSON.stringify({ material_code: cleanCode, counted_qty: qty, operator: currentUsername })
             });
             alert('盤點成功');
             await loadSheetItems();
         } catch(e) { alert('盤點失敗: ' + e.message); }
     }
 
-    function handleScan(cleanedCode) {
+    function handleScan(rawCode) {
+        const cleanedCode = cleanMaterialCode(rawCode);
+        if (!cleanedCode) return;
+        // 在卡片中查找
         const card = document.querySelector(`.material-card[data-code="${escapeHtml(cleanedCode)}"]`);
         if (card) {
             card.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -175,8 +188,12 @@
             const input = card.querySelector('.count-input');
             if (input) input.focus();
             window.scannedCode = cleanedCode;
+            document.getElementById('scanMaterialCode').value = cleanedCode;
         } else {
-            alert(`找不到料號: ${cleanedCode}`);
+            alert(`找不到料號: ${cleanedCode} (已清理後)`);
+            // 可以調試輸出實際字符
+            console.log('掃描原始碼:', rawCode);
+            console.log('清理後碼:', cleanedCode);
         }
     }
 
@@ -193,13 +210,11 @@
         try {
             await qrReader.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } },
                 (decodedText) => {
-                    const cleaned = decodedText.trim();
                     qrReader.stop().catch(console.warn);
                     readerDiv.classList.add('hidden');
                     readerDiv.innerHTML = '';
                     html5QrCode = null;
-                    document.getElementById('scanMaterialCode').value = cleaned;
-                    handleScan(cleaned);
+                    handleScan(decodedText);
                 },
                 (err) => {}
             );
@@ -219,7 +234,7 @@
 
     document.getElementById('submitScanBtn').onclick = () => {
         let materialCode = document.getElementById('scanMaterialCode').value.trim();
-        if (!materialCode && window.scannedCode) materialCode = window.scannedCode.trim();
+        if (!materialCode && window.scannedCode) materialCode = window.scannedCode;
         if (!materialCode) { alert('請先掃描或輸入料號'); return; }
         const qty = parseInt(document.getElementById('countedQty').value);
         if (isNaN(qty) || qty < 0) { alert('請輸入有效數量'); return; }
@@ -229,7 +244,12 @@
         window.scannedCode = null;
     };
     document.getElementById('scanMaterialCode').onkeypress = (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); const code = e.target.value.trim(); if(code) handleScan(code); e.target.value = ''; }
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const code = e.target.value.trim();
+            if (code) handleScan(code);
+            e.target.value = '';
+        }
     };
     document.getElementById('cameraBtn').onclick = () => { startCamera(); };
     document.getElementById('backBtn').onclick = () => {

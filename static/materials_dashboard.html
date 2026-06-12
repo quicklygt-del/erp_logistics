@@ -162,29 +162,44 @@
     };
     document.getElementById('searchMaterialsBtn').onclick = () => { currentSearch = document.getElementById('searchKeyword').value.trim(); currentPage = 0; loadMaterials(); };
 
+    function buildMaterialQrText(code) {
+        return String(code || '').trim();
+    }
+
     function renderQRCode(container, code, name, spec) {
         container.innerHTML = '';
         if (typeof QRCode === 'undefined') {
             container.innerHTML = '<p class="text-red-500 text-sm">QR 函式庫載入失敗，請重新整理頁面</p>';
-            return;
+            return false;
+        }
+        const qrText = buildMaterialQrText(code);
+        if (!qrText) {
+            container.innerHTML = '<p class="text-red-500 text-sm">料號為空，無法生成 QR 碼</p>';
+            return false;
         }
         try {
             new QRCode(container, {
-                text: `料號:${code}\n品名:${name}\n規格:${spec}`,
+                text: qrText,
                 width: 200,
                 height: 200,
-                correctLevel: QRCode.CorrectLevel.M
+                correctLevel: QRCode.CorrectLevel.L
             });
-            setTimeout(() => {
-                const img = container.querySelector('img');
-                if (!img || !img.src) {
-                    container.innerHTML = '<p class="text-red-500 text-sm">QR 碼生成失敗，請關閉後重試</p>';
-                }
-            }, 150);
+            window._printData = { code, name, spec, qrText };
+            return true;
         } catch (e) {
             console.error(e);
             container.innerHTML = `<p class="text-red-500 text-sm">QR 碼生成失敗：${escapeHtml(e.message)}</p>`;
+            return false;
         }
+    }
+
+    function verifyQrImage(container) {
+        const img = container.querySelector('img');
+        if (!img || !img.src) {
+            container.innerHTML = '<p class="text-red-500 text-sm">QR 碼生成失敗，請關閉後重試</p>';
+            return false;
+        }
+        return true;
     }
 
     function showQR(code, name, spec) {
@@ -193,14 +208,18 @@
         const info = document.getElementById('qrMaterialInfo');
         if (!modal || !container || !info) return;
 
-        info.innerHTML = `${escapeHtml(code)}<br>${escapeHtml(name)}`;
+        info.innerHTML = `${escapeHtml(code)}<br>${escapeHtml(name)}${spec ? `<br><span class="text-gray-500 text-sm">${escapeHtml(spec)}</span>` : ''}`;
         window._printData = { code, name, spec };
         container.innerHTML = '<p class="text-gray-400 text-sm">生成中...</p>';
         modal.classList.remove('hidden');
 
         // 模態框剛顯示時容器尺寸為 0，需等 layout 完成後再生成 QR
         requestAnimationFrame(() => {
-            requestAnimationFrame(() => renderQRCode(container, code, name, spec));
+            requestAnimationFrame(() => {
+                if (renderQRCode(container, code, name, spec)) {
+                    setTimeout(() => verifyQrImage(container), 150);
+                }
+            });
         });
     }
 
