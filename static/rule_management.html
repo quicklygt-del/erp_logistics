@@ -27,7 +27,7 @@
                     <tr><th>ID</th><th>規則名稱</th><th>節點類型</th><th>閾值(小時)</th><th>啟用狀態</th><th>操作</th></tr>
                 </thead>
                 <tbody id="rulesTbody">
-                    <tr><td colspan="6" class="text-center py-4">載入中...</tbody>
+                    <tr><td colspan="6" class="text-center py-4">載入中...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -62,7 +62,6 @@
 </div>
 
 <script>
-    // ========== 修正：API_BASE 改為正確的後端路由前綴 ==========
     const API_BASE = "/api/v1/admin/alert-rules";
     let token = localStorage.getItem('access_token');
     if (!token) { alert('請先登入'); location.href = 'login.html'; }
@@ -88,11 +87,10 @@
 
     async function loadRules() {
         try {
-            // 直接使用 API_BASE 作為列表端點
-            const rules = await apiFetch(API_BASE);
+            const rules = await apiFetch(`${API_BASE}/`);
             const tbody = document.getElementById('rulesTbody');
             if (!rules.length) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4">暫無規則</tbody>';
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4">暫無規則</td></tr>';
                 return;
             }
             tbody.innerHTML = rules.map(rule => `
@@ -158,7 +156,7 @@
                 await apiFetch(`${API_BASE}/${ruleId}`, { method: 'PATCH', body: JSON.stringify(body) });
                 alert('更新成功');
             } else {
-                await apiFetch(API_BASE, { method: 'POST', body: JSON.stringify(body) });
+                await apiFetch(`${API_BASE}/`, { method: 'POST', body: JSON.stringify(body) });
                 alert('新增成功');
             }
             document.getElementById('ruleModal').classList.add('hidden');
