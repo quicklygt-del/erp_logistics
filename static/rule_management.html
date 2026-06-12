@@ -62,7 +62,8 @@
 </div>
 
 <script>
-    const API_BASE = "/api/v1";
+    // 修改 API 路徑為 /api/v1/admin/users/alert-rules（因為 admin_users.py 中的 router prefix 是 /admin/users）
+    const API_BASE = "/api/v1/admin/users";
     let token = localStorage.getItem('access_token');
     if (!token) { alert('請先登入'); location.href = 'login.html'; }
 
@@ -82,7 +83,7 @@
 
     async function loadRules() {
         try {
-            const rules = await apiFetch(`${API_BASE}/admin/alert-rules`);
+            const rules = await apiFetch(`${API_BASE}/alert-rules`);
             const tbody = document.getElementById('rulesTbody');
             if (!rules.length) {
                 tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4">暫無規則</tbody>';
@@ -101,7 +102,6 @@
                     </td>
                 </tr>
             `).join('');
-            // 綁定編輯按鈕
             document.querySelectorAll('.edit-btn').forEach(btn => {
                 btn.onclick = () => {
                     document.getElementById('modalTitle').innerText = '編輯規則';
@@ -113,12 +113,11 @@
                     document.getElementById('ruleModal').classList.remove('hidden');
                 };
             });
-            // 綁定刪除按鈕
             document.querySelectorAll('.delete-btn').forEach(btn => {
                 btn.onclick = async () => {
                     if (!confirm(`確定刪除規則「${btn.dataset.name}」？`)) return;
                     try {
-                        await apiFetch(`${API_BASE}/admin/alert-rules/${btn.dataset.id}`, { method: 'DELETE' });
+                        await apiFetch(`${API_BASE}/alert-rules/${btn.dataset.id}`, { method: 'DELETE' });
                         alert('刪除成功');
                         loadRules();
                     } catch(e) { alert('刪除失敗: ' + e.message); }
@@ -148,10 +147,10 @@
         const body = { rule_name: ruleName, node_type: nodeType, threshold_hours: thresholdHours, is_active: isActive };
         try {
             if (ruleId) {
-                await apiFetch(`${API_BASE}/admin/alert-rules/${ruleId}`, { method: 'PATCH', body: JSON.stringify(body) });
+                await apiFetch(`${API_BASE}/alert-rules/${ruleId}`, { method: 'PATCH', body: JSON.stringify(body) });
                 alert('更新成功');
             } else {
-                await apiFetch(`${API_BASE}/admin/alert-rules`, { method: 'POST', body: JSON.stringify(body) });
+                await apiFetch(`${API_BASE}/alert-rules`, { method: 'POST', body: JSON.stringify(body) });
                 alert('新增成功');
             }
             document.getElementById('ruleModal').classList.add('hidden');

@@ -11,6 +11,17 @@
             .container { padding-left: 0.5rem; padding-right: 0.5rem; }
             table { font-size: 0.75rem; }
         }
+        /* 表格邊框樣式 */
+        .material-table, .material-table th, .material-table td {
+            border: 1px solid #ccc;
+            border-collapse: collapse;
+            padding: 0.5rem;
+            vertical-align: top;
+        }
+        .material-table th {
+            background-color: #f9fafb;
+            font-weight: 600;
+        }
     </style>
 </head>
 <body class="bg-gray-100 p-4">
@@ -37,10 +48,20 @@
         </div>
         <div class="bg-white p-4 rounded shadow mb-4">
             <h2 class="font-bold">📂 上傳 Excel</h2>
-            <div class="flex flex-wrap gap-2 mt-2">
-                <select id="uploadMode" class="border p-1 rounded"><option value="update">更新模式</option><option value="overwrite">覆蓋模式</option></select>
+            <div class="flex flex-wrap gap-2 mt-2 items-end">
+                <div>
+                    <label class="block text-sm">匯入模式</label>
+                    <select id="uploadMode" class="border p-1 rounded">
+                        <option value="update">新增/更新（合併匯入）</option>
+                        <option value="overwrite">覆蓋全部（重置匯入）</option>
+                    </select>
+                </div>
                 <input type="file" id="excelFile" accept=".xlsx,.xls" class="hidden">
                 <button id="uploadExcelBtn" class="bg-indigo-600 text-white px-3 py-1 rounded">上傳</button>
+                <div class="text-xs text-gray-500 ml-2">
+                    ※ 新增/更新：若料號已存在，則更新庫存等資訊；不存在則新增。<br>
+                    ※ 覆蓋全部：刪除現有所有物料，再匯入Excel中的物料（完全取代）。
+                </div>
             </div>
             <div id="uploadMessage" class="text-sm mt-2"></div>
         </div>
@@ -52,12 +73,19 @@
             </div>
         </div>
         <div class="bg-white rounded shadow overflow-x-auto">
-            <table class="min-w-full">
-                <thead class="bg-gray-50">
-                    <tr><th>料號</th><th>品名</th><th>規格</th><th>庫存數量</th><th>安全庫存</th><th>儲位</th></tr>
+            <table class="material-table min-w-full">
+                <thead>
+                    <tr>
+                        <th>料號</th>
+                        <th>品名</th>
+                        <th>規格</th>
+                        <th>庫存數量</th>
+                        <th>安全庫存</th>
+                        <th>儲位</th>
+                    </tr>
                 </thead>
                 <tbody id="materialsTableBody">
-                    <tr><td colspan="6" class="text-center py-4">載入中...</tbody>
+                    <tr><td colspan="6" class="text-center py-4">載入中...<\/tr>
                 </tbody>
             </table>
         </div>
@@ -106,13 +134,13 @@
         if (!currentMaterials.length) { tb.innerHTML = '<tr><td colspan="6" class="text-center">無資料</tbody>'; return; }
         tb.innerHTML = currentMaterials.map(m => `
             <tr>
-                <td class="px-4 py-2 text-sm font-mono">${escapeHtml(m.material_code)}</td>
-                <td class="px-4 py-2">${escapeHtml(m.name)}</td>
-                <td class="px-4 py-2">${escapeHtml(m.spec || '')}</td>
-                <td class="text-right">${m.stock_qty}</td>
-                <td class="text-right">${m.safety_stock !== undefined ? m.safety_stock : 0}</td>
-                <td class="px-4 py-2">${escapeHtml(m.location || '')}</td>
-            </tr>
+                <td class="px-4 py-2 text-sm font-mono">${escapeHtml(m.material_code)}<\/td>
+                <td class="px-4 py-2">${escapeHtml(m.name)}<\/td>
+                <td class="px-4 py-2">${escapeHtml(m.spec || '')}<\/td>
+                <td class="text-right">${m.stock_qty}<\/td>
+                <td class="text-right">${m.safety_stock !== undefined ? m.safety_stock : 0}<\/td>
+                <td class="px-4 py-2">${escapeHtml(m.location || '')}<\/td>
+             <\/tr>
         `).join('');
     }
 
@@ -138,9 +166,15 @@
         try {
             const res = await fetch(`${API_BASE}/materials/upload-excel?mode=${mode}&operator=${localStorage.getItem('username')}`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: fd });
             const d = await res.json();
-            if (res.ok) { document.getElementById('uploadMessage').innerHTML = `✅ 成功 ${d.inserted_updated} 筆`; loadMaterials(); }
-            else { document.getElementById('uploadMessage').innerHTML = `❌ 失敗: ${d.detail}`; }
-        } catch(err) { document.getElementById('uploadMessage').innerHTML = `❌ ${err.message}`; }
+            if (res.ok) {
+                document.getElementById('uploadMessage').innerHTML = `✅ 成功：新增 ${d.inserted} 筆，更新 ${d.updated} 筆`;
+                loadMaterials();
+            } else {
+                document.getElementById('uploadMessage').innerHTML = `❌ 失敗: ${d.detail}`;
+            }
+        } catch(err) {
+            document.getElementById('uploadMessage').innerHTML = `❌ ${err.message}`;
+        }
     };
     document.getElementById('searchMaterialsBtn').onclick = () => { currentSearch = document.getElementById('searchKeyword').value.trim(); currentPage = 0; loadMaterials(); };
 
