@@ -302,7 +302,7 @@
             const items = await apiFetch(`${API_BASE}/documents/pending-return`);
             const tbody = document.getElementById('returnTableBody');
             if (!items.length) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4">無待退貨項目</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4">無待退貨項目</tbody>';
                 return;
             }
             tbody.innerHTML = items.map(item => `
@@ -313,7 +313,7 @@
                     <td class="p-2">${escapeHtml(item.spec)}</td>
                     <td class="p-2 text-right">${item.qty}</td>
                     <td class="p-2 text-center"><input type="checkbox" class="return-checkbox" data-doc="${escapeHtml(item.doc_number)}" data-code="${escapeHtml(item.material_code)}" data-qty="${item.qty}"></td>
-                </tr>
+                </table>
             `).join('');
             const selectAll = document.getElementById('selectAllReturn');
             if (selectAll) {
@@ -455,9 +455,18 @@
             renderBoxesList();
             for (const item of data.details) {
                 const code = item.material_code;
+                // 清理規格中的換行/回車/製表符，避免亂碼
+                const cleanSpec = (item.spec || '').replace(/[\n\r\t]/g, ' ').trim();
                 const existing = shipItemsMap.get(code);
-                if (existing) existing.totalQty += item.quantity;
-                else shipItemsMap.set(code, { name: item.material_name, spec: item.spec, totalQty: item.quantity });
+                if (existing) {
+                    existing.totalQty += item.quantity;
+                } else {
+                    shipItemsMap.set(code, {
+                        name: item.material_name,
+                        spec: cleanSpec,
+                        totalQty: item.quantity
+                    });
+                }
             }
             renderShipItems();
             return true;
@@ -491,9 +500,17 @@
                 const data = await apiFetch(`${API_BASE}/boxes/${encodeURIComponent(box)}/details`);
                 for (const item of data.details) {
                     const code = item.material_code;
+                    const cleanSpec = (item.spec || '').replace(/[\n\r\t]/g, ' ').trim();
                     const existing = shipItemsMap.get(code);
-                    if (existing) existing.totalQty += item.quantity;
-                    else shipItemsMap.set(code, { name: item.material_name, spec: item.spec, totalQty: item.quantity });
+                    if (existing) {
+                        existing.totalQty += item.quantity;
+                    } else {
+                        shipItemsMap.set(code, {
+                            name: item.material_name,
+                            spec: cleanSpec,
+                            totalQty: item.quantity
+                        });
+                    }
                 }
             } catch(e) { console.error(e); }
         }
@@ -503,15 +520,19 @@
 
     function renderShipItems() {
         const tbody = document.getElementById('shipItemsTbody');
-        if (shipItemsMap.size === 0) { tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4">暫無物料</td></tr>'; return; }
-        tbody.innerHTML = Array.from(shipItemsMap.entries()).map(([code, item]) => `
-            <tr>
-                <td class="p-2">${escapeHtml(code)}</td>
-                <td class="p-2">${escapeHtml(item.name)}</td>
-                <td class="p-2"><input type="number" class="ship-qty w-20 border px-1 text-center" data-code="${escapeHtml(code)}" value="${item.totalQty}" min="0"></td>
-                <td class="p-2"><button class="remove-item-btn bg-red-500 text-white px-2 py-1 rounded text-xs" data-code="${escapeHtml(code)}">移除</button></td>
-            </tr>
-        `).join('');
+        if (shipItemsMap.size === 0) { tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4">暫無物料</tbody>'; return; }
+        tbody.innerHTML = Array.from(shipItemsMap.entries()).map(([code, item]) => {
+            const cleanSpec = (item.spec || '').replace(/[\n\r\t]/g, ' ').trim();
+            return `
+                <tr>
+                    <td class="p-2">${escapeHtml(code)}</td>
+                    <td class="p-2">${escapeHtml(item.name)}</td>
+                    <td class="p-2">${escapeHtml(cleanSpec)}</td>
+                    <td class="p-2"><input type="number" class="ship-qty w-20 border px-1 text-center" data-code="${escapeHtml(code)}" value="${item.totalQty}" min="0"></td>
+                    <td class="p-2"><button class="remove-item-btn bg-red-500 text-white px-2 py-1 rounded text-xs" data-code="${escapeHtml(code)}">移除</button></td>
+                </tr>
+            `;
+        }).join('');
         document.querySelectorAll('.ship-qty').forEach(inp => {
             inp.addEventListener('change', () => {
                 const code = inp.dataset.code;

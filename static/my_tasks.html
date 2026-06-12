@@ -7,13 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <style>
-        .material-card {
-            background: white;
-            border-radius: 16px;
-            border: 1px solid #e5e7eb;
-            padding: 0.75rem;
-            margin-bottom: 0.75rem;
-        }
+        .material-card { background: white; border-radius: 16px; border: 1px solid #e5e7eb; padding: 0.75rem; margin-bottom: 0.75rem; }
         .material-card.highlight { background-color: #fff3cd; }
         .touch-btn { min-height: 48px; font-size: 1rem; padding: 0.5rem 1rem; }
         .touch-input { font-size: 1rem; padding: 0.75rem; }
@@ -39,7 +33,6 @@
             <h2 id="sheetTitle" class="text-lg font-bold"></h2>
             <button id="backBtn" class="bg-gray-500 text-white px-3 py-2 rounded text-sm">返回任務列表</button>
         </div>
-
         <div class="flex flex-wrap gap-2 mb-4 bg-gray-50 p-3 rounded">
             <input type="text" id="scanMaterialCode" placeholder="掃描或輸入料號 (按 Enter 定位)" class="border flex-1 p-3 rounded touch-input" autofocus>
             <input type="number" id="countedQty" placeholder="數量" value="1" class="border w-24 p-3 rounded touch-input" min="0">
@@ -47,11 +40,9 @@
             <button id="cameraBtn" class="bg-purple-600 text-white px-4 py-3 rounded touch-btn">📷 掃描</button>
         </div>
         <div id="reader" class="hidden"></div>
-
         <div id="itemsContainer" class="max-h-96 overflow-auto">
             <div class="text-center py-8 text-gray-500">請選擇盤點單</div>
         </div>
-
         <button id="finishSheetBtn" class="mt-4 bg-blue-600 text-white w-full py-3 rounded-lg touch-btn">✅ 結束盤點</button>
     </div>
 </div>
@@ -175,17 +166,17 @@
         } catch(e) { alert('盤點失敗: ' + e.message); }
     }
 
-    function handleScan(code) {
-        const card = document.querySelector(`.material-card[data-code="${escapeHtml(code)}"]`);
+    function handleScan(cleanedCode) {
+        const card = document.querySelector(`.material-card[data-code="${escapeHtml(cleanedCode)}"]`);
         if (card) {
             card.scrollIntoView({ behavior: 'smooth', block: 'center' });
             card.classList.add('highlight');
             setTimeout(() => card.classList.remove('highlight'), 1500);
             const input = card.querySelector('.count-input');
             if (input) input.focus();
-            window.scannedCode = code;
+            window.scannedCode = cleanedCode;
         } else {
-            alert(`找不到料號: ${code}`);
+            alert(`找不到料號: ${cleanedCode}`);
         }
     }
 
@@ -197,20 +188,20 @@
         const readerDiv = document.getElementById('reader');
         readerDiv.classList.remove('hidden');
         readerDiv.innerHTML = `<div id="qr-reader" style="width:100%;"></div><button id="closeCameraBtn" class="mt-2 bg-gray-500 text-white px-3 py-2 rounded w-full">關閉相機</button>`;
-        
         const qrReader = new Html5Qrcode("qr-reader");
         html5QrCode = qrReader;
         try {
             await qrReader.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } },
                 (decodedText) => {
+                    const cleaned = decodedText.trim();
                     qrReader.stop().catch(console.warn);
                     readerDiv.classList.add('hidden');
                     readerDiv.innerHTML = '';
                     html5QrCode = null;
-                    document.getElementById('scanMaterialCode').value = decodedText;
-                    handleScan(decodedText);
+                    document.getElementById('scanMaterialCode').value = cleaned;
+                    handleScan(cleaned);
                 },
-                (err) => { /* 忽略扫描错误 */ }
+                (err) => {}
             );
             document.getElementById('closeCameraBtn').onclick = () => {
                 qrReader.stop().catch(console.warn);
@@ -228,7 +219,7 @@
 
     document.getElementById('submitScanBtn').onclick = () => {
         let materialCode = document.getElementById('scanMaterialCode').value.trim();
-        if (!materialCode && window.scannedCode) materialCode = window.scannedCode;
+        if (!materialCode && window.scannedCode) materialCode = window.scannedCode.trim();
         if (!materialCode) { alert('請先掃描或輸入料號'); return; }
         const qty = parseInt(document.getElementById('countedQty').value);
         if (isNaN(qty) || qty < 0) { alert('請輸入有效數量'); return; }
@@ -238,7 +229,7 @@
         window.scannedCode = null;
     };
     document.getElementById('scanMaterialCode').onkeypress = (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); handleScan(e.target.value.trim()); e.target.value = ''; }
+        if (e.key === 'Enter') { e.preventDefault(); const code = e.target.value.trim(); if(code) handleScan(code); e.target.value = ''; }
     };
     document.getElementById('cameraBtn').onclick = () => { startCamera(); };
     document.getElementById('backBtn').onclick = () => {

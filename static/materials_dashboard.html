@@ -8,17 +8,21 @@
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
-        /* 手机优化 */
         @media (max-width: 640px) {
             .container { padding-left: 0.5rem; padding-right: 0.5rem; }
             table { font-size: 0.75rem; }
             .qr-btn { font-size: 0.7rem; padding: 0.2rem 0.4rem; }
         }
+        /* 确保 QR 码容器有固定大小 */
+        #qrCodeContainer {
+            width: 200px;
+            height: 200px;
+            margin: 0 auto;
+        }
     </style>
 </head>
 <body class="bg-gray-100 p-4">
 <div class="max-w-7xl mx-auto">
-    <!-- 頂部標題與公用功能 - 改为汉堡菜单？暂不修改，保持原样 -->
     <div class="flex justify-between items-center mb-4 flex-wrap gap-2">
         <div class="flex items-center gap-3">
             <button onclick="location.href='command_center.html'" class="bg-gray-500 text-white px-3 py-2 rounded text-sm">← 返回指揮塔</button>
@@ -32,7 +36,6 @@
         </div>
     </div>
 
-    <!-- 主儲倉面板內容 -->
     <div id="materialsPanel">
         <div class="flex justify-end mb-4">
             <div>
@@ -87,10 +90,10 @@
     </div>
 </div>
 
-<!-- QR Code 模態框（初始隱藏） -->
+<!-- QR Code 模態框 -->
 <div id="qrModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
     <div class="bg-white p-6 rounded text-center">
-        <div id="qrCodeContainer"></div>
+        <div id="qrCodeContainer" style="width:200px; height:200px; margin:0 auto;"></div>
         <p id="qrMaterialInfo" class="my-2"></p>
         <button id="printQrBtn" class="bg-blue-600 text-white px-3 py-1 rounded">列印</button>
         <button id="closeModalBtn" class="bg-gray-300 px-3 py-1 rounded ml-2">關閉</button>
@@ -116,7 +119,7 @@
 
     function escapeHtml(s) { if (!s) return ''; return s.replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m])); }
 
-    // ========== 物料主檔邏輯 ==========
+    // 物料主檔邏輯
     let currentPage = 0, currentSearch = "", currentTotal = 0, LIMIT = 15;
     let currentMaterials = [];
 
@@ -205,32 +208,39 @@
         loadMaterials();
     };
 
-    // ========== QR Code 功能（修復：先顯示模態框再生成QR碼） ==========
+    // QR Code 功能 - 修复确保生成
     function showQR(code, name, spec) {
         const modal = document.getElementById('qrModal');
         if (!modal) return;
-        // 清空容器
+        // 清空容器内容
         const container = document.getElementById('qrCodeContainer');
         container.innerHTML = '';
-        // 先顯示模態框（確保QR碼生成時容器可見）
+        // 显示模态框
         modal.classList.remove('hidden');
-        // 生成 QR 碼
-        new QRCode(container, {
-            text: `料號:${code}\n品名:${name}\n規格:${spec}`,
-            width: 200,
-            height: 200
-        });
-        document.getElementById('qrMaterialInfo').innerHTML = `${code}<br>${name}`;
-        window._printData = { code, name, spec };
+        // 确保容器可见并有一定尺寸后生成 QR 码（加短暂延迟防止 DOM 未渲染）
+        setTimeout(() => {
+            // 再次确保容器为空（防止重复生成）
+            container.innerHTML = '';
+            new QRCode(container, {
+                text: `料號:${code}\n品名:${name}\n規格:${spec}`,
+                width: 200,
+                height: 200
+            });
+            document.getElementById('qrMaterialInfo').innerHTML = `${code}<br>${name}`;
+            window._printData = { code, name, spec };
+        }, 50);
     }
 
-    // 綁定模態框按鈕事件（只需要綁定一次）
+    // 绑定模态框按钮（只需一次）
     document.getElementById('closeModalBtn').onclick = () => {
         document.getElementById('qrModal').classList.add('hidden');
     };
     document.getElementById('printQrBtn').onclick = () => {
         const img = document.querySelector('#qrCodeContainer img');
-        if (!img) return;
+        if (!img) {
+            alert('QR 碼尚未產生，請稍後再試');
+            return;
+        }
         const w = window.open('');
         w.document.write(`
             <html><head><title>列印</title></head>
