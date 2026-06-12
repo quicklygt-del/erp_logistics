@@ -61,7 +61,7 @@
                     <tr><th>料號</th><th>品名</th><th>規格</th><th>數量</th><th>備註</th><th>操作</th></tr>
                 </thead>
                 <tbody id="itemsTbody">
-                    <tr><td colspan="6" class="text-center py-2">暫無物料</tbody>
+                    <tr><td colspan="6" class="text-center py-2">暫無物料</td></tr>
                 </tbody>
             </table>
         </div>
@@ -91,7 +91,7 @@
                     <tr><th>單號</th><th>類型</th><th>單位</th><th>經手人</th><th>時間</th><th>操作</th></tr>
                 </thead>
                 <tbody id="historyTbody">
-                    <tr><td colspan="6" class="text-center py-4">載入中...</tbody>
+                    <tr><td colspan="6" class="text-center py-4">載入中...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -160,7 +160,7 @@
     function renderItemsTable() {
         const tbody = document.getElementById('itemsTbody');
         if (currentItems.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-2">暫無物料</tbody>';
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-2">暫無物料</td></tr>';
             return;
         }
         tbody.innerHTML = currentItems.map((item, idx) => `
@@ -268,7 +268,7 @@
             const data = await apiFetch(url);
             const tbody = document.getElementById('historyTbody');
             if (!data.data.length) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4">暫無紀錄</tbody>';
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4">暫無紀錄</td></tr>';
                 totalPages = 0;
             } else {
                 tbody.innerHTML = data.data.map(t => `
