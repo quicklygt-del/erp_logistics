@@ -62,8 +62,8 @@
 </div>
 
 <script>
-    // 修改 API 路徑為 /api/v1/admin/users/alert-rules（因為 admin_users.py 中的 router prefix 是 /admin/users）
-    const API_BASE = "/api/v1/admin/users";
+    // ========== 修正：API_BASE 改為正確的後端路由前綴 ==========
+    const API_BASE = "/api/v1/admin/alert-rules";
     let token = localStorage.getItem('access_token');
     if (!token) { alert('請先登入'); location.href = 'login.html'; }
 
@@ -74,7 +74,12 @@
             ...(opts.headers || {})
         };
         const res = await fetch(url, opts);
-        if (res.status === 401) { alert('登入過期'); localStorage.removeItem('access_token'); location.href = 'login.html'; throw new Error('Unauthorized'); }
+        if (res.status === 401) {
+            alert('登入過期，請重新登入');
+            localStorage.removeItem('access_token');
+            location.href = 'login.html';
+            throw new Error('Unauthorized');
+        }
         if (!res.ok) throw new Error(await res.text());
         return res.json();
     }
@@ -83,7 +88,8 @@
 
     async function loadRules() {
         try {
-            const rules = await apiFetch(`${API_BASE}/alert-rules`);
+            // 直接使用 API_BASE 作為列表端點
+            const rules = await apiFetch(API_BASE);
             const tbody = document.getElementById('rulesTbody');
             if (!rules.length) {
                 tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4">暫無規則</tbody>';
@@ -102,6 +108,7 @@
                     </td>
                 </tr>
             `).join('');
+            // 綁定編輯按鈕
             document.querySelectorAll('.edit-btn').forEach(btn => {
                 btn.onclick = () => {
                     document.getElementById('modalTitle').innerText = '編輯規則';
@@ -113,11 +120,12 @@
                     document.getElementById('ruleModal').classList.remove('hidden');
                 };
             });
+            // 綁定刪除按鈕
             document.querySelectorAll('.delete-btn').forEach(btn => {
                 btn.onclick = async () => {
                     if (!confirm(`確定刪除規則「${btn.dataset.name}」？`)) return;
                     try {
-                        await apiFetch(`${API_BASE}/alert-rules/${btn.dataset.id}`, { method: 'DELETE' });
+                        await apiFetch(`${API_BASE}/${btn.dataset.id}`, { method: 'DELETE' });
                         alert('刪除成功');
                         loadRules();
                     } catch(e) { alert('刪除失敗: ' + e.message); }
@@ -147,10 +155,10 @@
         const body = { rule_name: ruleName, node_type: nodeType, threshold_hours: thresholdHours, is_active: isActive };
         try {
             if (ruleId) {
-                await apiFetch(`${API_BASE}/alert-rules/${ruleId}`, { method: 'PATCH', body: JSON.stringify(body) });
+                await apiFetch(`${API_BASE}/${ruleId}`, { method: 'PATCH', body: JSON.stringify(body) });
                 alert('更新成功');
             } else {
-                await apiFetch(`${API_BASE}/alert-rules`, { method: 'POST', body: JSON.stringify(body) });
+                await apiFetch(API_BASE, { method: 'POST', body: JSON.stringify(body) });
                 alert('新增成功');
             }
             document.getElementById('ruleModal').classList.add('hidden');
