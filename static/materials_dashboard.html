@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
     <title>主儲倉管理中心</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/qrcodejs@1.0.0/qrcode.min.js'"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
         @media (max-width: 640px) {
@@ -117,7 +117,7 @@
     function renderMaterials() {
         const tb = document.getElementById('materialsTableBody');
         if (!currentMaterials.length) { tb.innerHTML = '<tr><td colspan="7" class="text-center">無資料</td></tr>'; return; }
-        tb.innerHTML = currentMaterials.map(m => `
+        tb.innerHTML = currentMaterials.map((m, idx) => `
             <tr>
                 <td class="px-4 py-2 text-sm font-mono">${escapeHtml(m.material_code)}</td>
                 <td class="px-4 py-2">${escapeHtml(m.name)}</td>
@@ -125,12 +125,12 @@
                 <td class="text-right">${m.stock_qty}</td>
                 <td class="text-right">${m.safety_stock !== undefined ? m.safety_stock : 0}</td>
                 <td class="px-4 py-2">${escapeHtml(m.location || '')}</td>
-                <td class="text-center"><button class="qr-btn text-blue-600" data-code="${escapeHtml(m.material_code)}" data-name="${escapeHtml(m.name)}" data-spec="${escapeHtml(m.spec || '')}"><i class="fas fa-qrcode"></i> 條碼</button></td>
+                <td class="text-center"><button class="qr-btn text-blue-600" data-idx="${idx}"><i class="fas fa-qrcode"></i> 條碼</button></td>
             </tr>
         `).join('');
         document.querySelectorAll('.qr-btn').forEach(btn => btn.onclick = () => {
-            const code = btn.dataset.code, name = btn.dataset.name, spec = btn.dataset.spec;
-            showQR(code, name, spec);
+            const m = currentMaterials[parseInt(btn.dataset.idx, 10)];
+            if (m) showQR(m.material_code, m.name, m.spec || '');
         });
     }
 
@@ -162,27 +162,46 @@
     };
     document.getElementById('searchMaterialsBtn').onclick = () => { currentSearch = document.getElementById('searchKeyword').value.trim(); currentPage = 0; loadMaterials(); };
 
-    // QR Code 显示 - 最可靠方式
-    function showQR(code, name, spec) {
-        const modal = document.getElementById('qrModal');
-        const container = document.getElementById('qrCodeContainer');
-        if (!modal || !container) return;
-        // 清空并显示模态框
+    function renderQRCode(container, code, name, spec) {
         container.innerHTML = '';
-        modal.classList.remove('hidden');
-        // 强制生成 QR 码
+        if (typeof QRCode === 'undefined') {
+            container.innerHTML = '<p class="text-red-500 text-sm">QR 函式庫載入失敗，請重新整理頁面</p>';
+            return;
+        }
         try {
             new QRCode(container, {
                 text: `料號:${code}\n品名:${name}\n規格:${spec}`,
                 width: 200,
-                height: 200
+                height: 200,
+                correctLevel: QRCode.CorrectLevel.M
             });
-            document.getElementById('qrMaterialInfo').innerHTML = `${code}<br>${name}`;
-            window._printData = { code, name, spec };
-        } catch(e) {
+            setTimeout(() => {
+                const img = container.querySelector('img');
+                if (!img || !img.src) {
+                    container.innerHTML = '<p class="text-red-500 text-sm">QR 碼生成失敗，請關閉後重試</p>';
+                }
+            }, 150);
+        } catch (e) {
             console.error(e);
-            alert('QR 碼生成失敗');
+            container.innerHTML = `<p class="text-red-500 text-sm">QR 碼生成失敗：${escapeHtml(e.message)}</p>`;
         }
+    }
+
+    function showQR(code, name, spec) {
+        const modal = document.getElementById('qrModal');
+        const container = document.getElementById('qrCodeContainer');
+        const info = document.getElementById('qrMaterialInfo');
+        if (!modal || !container || !info) return;
+
+        info.innerHTML = `${escapeHtml(code)}<br>${escapeHtml(name)}`;
+        window._printData = { code, name, spec };
+        container.innerHTML = '<p class="text-gray-400 text-sm">生成中...</p>';
+        modal.classList.remove('hidden');
+
+        // 模態框剛顯示時容器尺寸為 0，需等 layout 完成後再生成 QR
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => renderQRCode(container, code, name, spec));
+        });
     }
 
     document.getElementById('closeModalBtn').onclick = () => document.getElementById('qrModal').classList.add('hidden');
