@@ -13,28 +13,11 @@
             border: 1px solid #e5e7eb;
             padding: 0.75rem;
             margin-bottom: 0.75rem;
-            transition: background 0.2s;
         }
-        .material-card.highlight {
-            background-color: #fff3cd;
-        }
-        .touch-btn {
-            min-height: 48px;
-            font-size: 1rem;
-            padding: 0.5rem 1rem;
-        }
-        .touch-input {
-            font-size: 1rem;
-            padding: 0.75rem;
-        }
-        #reader {
-            width: 100%;
-            max-width: 500px;
-            margin-top: 10px;
-        }
-        @media (max-width: 640px) {
-            .material-card { padding: 0.6rem; }
-        }
+        .material-card.highlight { background-color: #fff3cd; }
+        .touch-btn { min-height: 48px; font-size: 1rem; padding: 0.5rem 1rem; }
+        .touch-input { font-size: 1rem; padding: 0.75rem; }
+        #reader { width: 100%; max-width: 500px; margin-top: 10px; }
     </style>
 </head>
 <body class="bg-gray-100 p-4">
@@ -47,19 +30,16 @@
         </div>
     </div>
 
-    <!-- 任務列表 -->
     <div id="taskList" class="bg-white rounded shadow p-4 mb-4">
         <div id="taskListContent" class="text-center py-4">載入中...</div>
     </div>
 
-    <!-- 盤點工作區 -->
     <div id="workingArea" class="bg-white rounded shadow p-4 hidden">
         <div class="flex justify-between items-center mb-3">
             <h2 id="sheetTitle" class="text-lg font-bold"></h2>
             <button id="backBtn" class="bg-gray-500 text-white px-3 py-2 rounded text-sm">返回任務列表</button>
         </div>
 
-        <!-- 掃描輸入區 -->
         <div class="flex flex-wrap gap-2 mb-4 bg-gray-50 p-3 rounded">
             <input type="text" id="scanMaterialCode" placeholder="掃描或輸入料號 (按 Enter 定位)" class="border flex-1 p-3 rounded touch-input" autofocus>
             <input type="number" id="countedQty" placeholder="數量" value="1" class="border w-24 p-3 rounded touch-input" min="0">
@@ -68,7 +48,6 @@
         </div>
         <div id="reader" class="hidden"></div>
 
-        <!-- 物料卡片列表 -->
         <div id="itemsContainer" class="max-h-96 overflow-auto">
             <div class="text-center py-8 text-gray-500">請選擇盤點單</div>
         </div>
@@ -99,10 +78,7 @@
         try {
             const tasks = await apiFetch(`${API_BASE}/inventory/my-tasks`);
             const container = document.getElementById('taskListContent');
-            if (!tasks.length) {
-                container.innerHTML = '<div class="text-gray-400">暫無指派給您的盤點任務</div>';
-                return;
-            }
+            if (!tasks.length) { container.innerHTML = '<div class="text-gray-400">暫無指派給您的盤點任務</div>'; return; }
             container.innerHTML = tasks.map(t => `
                 <div class="border rounded p-3 mb-2 flex justify-between items-center">
                     <div><strong>${escapeHtml(t.sheet_no)}</strong> - 倉庫:${escapeHtml(t.warehouse)} 狀態:${t.status}</div>
@@ -112,12 +88,18 @@
             document.querySelectorAll('.start-sheet').forEach(btn => {
                 btn.onclick = async () => {
                     currentSheetNo = btn.dataset.sheet;
-                    await loadSheetItems();
-                    document.getElementById('workingArea').classList.remove('hidden');
-                    document.getElementById('taskList').classList.add('hidden');
-                    document.getElementById('sheetTitle').innerHTML = `正在盤點：${currentSheetNo}`;
-                    document.getElementById('scanMaterialCode').focus();
-                    if (html5QrCode) { await html5QrCode.stop(); document.getElementById('reader').classList.add('hidden'); }
+                    try {
+                        // 先调用开始盘点 API
+                        await apiFetch(`${API_BASE}/inventory/sheets/${currentSheetNo}/start`, { method: 'PATCH' });
+                        await loadSheetItems();
+                        document.getElementById('workingArea').classList.remove('hidden');
+                        document.getElementById('taskList').classList.add('hidden');
+                        document.getElementById('sheetTitle').innerHTML = `正在盤點：${currentSheetNo}`;
+                        document.getElementById('scanMaterialCode').focus();
+                        if (html5QrCode) { await html5QrCode.stop(); document.getElementById('reader').classList.add('hidden'); }
+                    } catch(e) {
+                        alert('開始盤點失敗: ' + e.message);
+                    }
                 };
             });
         } catch(e) { alert('載入任務失敗: ' + e.message); }
@@ -127,11 +109,7 @@
         try {
             const items = await apiFetch(`${API_BASE}/inventory/sheets/${currentSheetNo}/items`);
             const container = document.getElementById('itemsContainer');
-            if (!items.length) {
-                container.innerHTML = '<div class="text-center py-8 text-gray-500">無物料</div>';
-                currentItems = [];
-                return;
-            }
+            if (!items.length) { container.innerHTML = '<div class="text-center py-8 text-gray-500">無物料</div>'; currentItems = []; return; }
             currentItems = items.map(it => ({
                 code: it.material_code,
                 name: it.name,
@@ -163,7 +141,6 @@
                 <div class="text-xs text-gray-500 mt-1">狀態：${item.status === '已盤' ? '✅ 已盤' : '⏳ 未盤'}</div>
             </div>
         `).join('');
-
         document.querySelectorAll('.update-btn').forEach(btn => {
             btn.onclick = async () => {
                 const idx = btn.dataset.idx;
@@ -184,7 +161,6 @@
         } catch(e) { alert('盤點失敗: ' + e.message); }
     }
 
-    // 掃描定位功能
     function handleScan(code) {
         const card = document.querySelector(`.material-card[data-code="${escapeHtml(code)}"]`);
         if (card) {
@@ -194,9 +170,7 @@
             const input = card.querySelector('.count-input');
             if (input) input.focus();
             window.scannedCode = code;
-        } else {
-            alert(`找不到料號: ${code}`);
-        }
+        } else { alert(`找不到料號: ${code}`); }
     }
 
     async function startCamera() {

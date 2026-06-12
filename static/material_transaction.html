@@ -61,7 +61,7 @@
                     <tr><th>料號</th><th>品名</th><th>規格</th><th>數量</th><th>備註</th><th>操作</th></tr>
                 </thead>
                 <tbody id="itemsTbody">
-                    <tr><td colspan="6" class="text-center py-2">暫無物料</td></tr>
+                    <tr><td colspan="6" class="text-center py-2">暫無物料</tbody>
                 </tbody>
             </table>
         </div>
@@ -91,7 +91,7 @@
                     <tr><th>單號</th><th>類型</th><th>單位</th><th>經手人</th><th>時間</th><th>操作</th></tr>
                 </thead>
                 <tbody id="historyTbody">
-                    <tr><td colspan="6" class="text-center py-4">載入中...</td></tr>
+                    <tr><td colspan="6" class="text-center py-4">載入中...</tbody>
                 </tbody>
             </table>
         </div>
@@ -114,7 +114,12 @@
             ...(opts.headers || {})
         };
         const res = await fetch(url, opts);
-        if (res.status === 401) { alert('登入過期'); localStorage.clear(); location.href = 'login.html'; throw new Error('Unauthorized'); }
+        if (res.status === 401) {
+            alert('登入過期，請重新登入');
+            localStorage.clear();
+            location.href = 'login.html';
+            throw new Error('Unauthorized');
+        }
         if (!res.ok) throw new Error(await res.text());
         return res.json();
     }
@@ -153,14 +158,15 @@
             }
             renderItemsTable();
         } catch(e) {
-            alert(`料號 ${materialCode} 不存在，請確認後重新掃描`);
+            // 物料不存在时提示，但不清除输入，让用户可以继续扫描其他料号
+            alert(`料號 ${materialCode} 不存在於物料主檔，請確認`);
         }
     }
 
     function renderItemsTable() {
         const tbody = document.getElementById('itemsTbody');
         if (currentItems.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-2">暫無物料</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-2">暫無物料</tbody>';
             return;
         }
         tbody.innerHTML = currentItems.map((item, idx) => `
@@ -171,7 +177,7 @@
                 <td class="p-1"><input type="number" class="item-qty w-16 border text-center" data-idx="${idx}" value="${item.quantity}"></td>
                 <td class="p-1"><input type="text" class="item-remark w-24 border" data-idx="${idx}" value="${escapeHtml(item.remark)}"></td>
                 <td class="p-1"><button class="remove-item text-red-500" data-idx="${idx}">刪除</button></td>
-            </tr>
+            </table>
         `).join('');
         document.querySelectorAll('.item-qty').forEach(inp => {
             inp.onchange = (e) => {
@@ -233,7 +239,8 @@
                     document.getElementById('scanQty').value = '1';
                     html5QrCode = null;
                 },
-                () => {});
+                () => {}
+            );
             document.getElementById('closeCameraBtn').onclick = () => {
                 qrReader.stop().catch(console.warn);
                 readerDiv.classList.add('hidden');
@@ -268,7 +275,7 @@
             const data = await apiFetch(url);
             const tbody = document.getElementById('historyTbody');
             if (!data.data.length) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4">暫無紀錄</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4">暫無紀錄</tbody>';
                 totalPages = 0;
             } else {
                 tbody.innerHTML = data.data.map(t => `
@@ -317,7 +324,6 @@
     }
 
     document.getElementById('searchBtn').onclick = () => loadHistory(0);
-
     document.getElementById('exportBtn').onclick = async () => {
         const startDate = document.getElementById('startDate').value;
         const endDate = document.getElementById('endDate').value;
