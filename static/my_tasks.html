@@ -68,9 +68,27 @@
     // 強化清理：移除控制字符、零寬空格、BOM 等
     function cleanMaterialCode(code) {
         if (!code) return '';
-        // 移除非打印字符（除普通空格、字母、數字、連字符、底線、中文、日文等常見字符外）
-        // 這裡簡化為：保留字母數字中文常見符號，移除其他控制字符
         return code.replace(/[\x00-\x1F\x7F\u200B-\u200F\uFEFF]/g, '').trim();
+    }
+
+    // ========== 新增：從多行 QR 內容中解析純料號 ==========
+    function parseMaterialCode(raw) {
+        if (!raw) return '';
+        // 先做基本清理
+        let cleaned = cleanMaterialCode(raw);
+        // 嘗試匹配常見 QR 格式，例如 "料號:Carb-A01" 或 "料號：Carb-A01"
+        const match = cleaned.match(/料號[:：]\s*([A-Za-z0-9\-_]+)/i);
+        if (match && match[1]) {
+            return match[1];
+        }
+        // 如果沒有匹配到，可能是純料號或換行分隔的格式，取第一行（移除換行後）
+        const firstLine = cleaned.split(/\r?\n/)[0].trim();
+        // 如果第一行看起來像料號（只含字母、數字、連字符、底線），則返回第一行
+        if (/^[A-Za-z0-9\-_]+$/.test(firstLine)) {
+            return firstLine;
+        }
+        // 否則返回清理後的原字串（可能是手動輸入的料號）
+        return cleaned;
     }
 
     async function loadTasks() {
@@ -164,8 +182,9 @@
     }
 
     async function submitCount(materialCode, qty) {
-        // 再次清理
-        const cleanCode = cleanMaterialCode(materialCode);
+        // 先解析出純料號
+        const parsedCode = parseMaterialCode(materialCode);
+        const cleanCode = cleanMaterialCode(parsedCode);
         try {
             await apiFetch(`${API_BASE}/inventory/sheets/${currentSheetNo}/scan`, {
                 method: 'POST',
@@ -177,7 +196,9 @@
     }
 
     function handleScan(rawCode) {
-        const cleanedCode = cleanMaterialCode(rawCode);
+        // 解析出純料號
+        const parsedCode = parseMaterialCode(rawCode);
+        const cleanedCode = cleanMaterialCode(parsedCode);
         if (!cleanedCode) return;
         // 在卡片中查找
         const card = document.querySelector(`.material-card[data-code="${escapeHtml(cleanedCode)}"]`);
@@ -190,10 +211,10 @@
             window.scannedCode = cleanedCode;
             document.getElementById('scanMaterialCode').value = cleanedCode;
         } else {
-            alert(`找不到料號: ${cleanedCode} (已清理後)`);
-            // 可以調試輸出實際字符
+            alert(`找不到料號: ${cleanedCode} (已解析後)`);
             console.log('掃描原始碼:', rawCode);
-            console.log('清理後碼:', cleanedCode);
+            console.log('解析後料號:', parsedCode);
+            console.log('清理後料號:', cleanedCode);
         }
     }
 
