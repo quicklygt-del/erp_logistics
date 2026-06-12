@@ -152,7 +152,7 @@
     let currentSingleQRCode = null;
     let currentBatchItems = [];
 
-    // ---------- 認證輔助函數 ----------
+    // 認證輔助函數
     function getToken() {
         return localStorage.getItem('access_token');
     }
@@ -198,6 +198,19 @@
         }
     }
 
+    // 物料 QR 碼內容：料號 + 空格 + 品名 + 空格 + 規格（不包含換行及標籤）
+    async function getMaterialQRText(code) {
+        try {
+            const data = await apiFetch(`${API_BASE}/materials/${encodeURIComponent(code)}`);
+            const name = data.name || '';
+            const spec = data.spec || '';
+            // 用空格分隔，避免特殊字符，總長度遠小於 200 字元
+            return `${code} ${name} ${spec}`.trim();
+        } catch(e) {
+            throw new Error('無法取得物料資訊');
+        }
+    }
+
     async function generateQRText(containerId, text, width=180, height=180) {
         const container = document.getElementById(containerId);
         container.innerHTML = '';
@@ -214,7 +227,8 @@
                 const qr = new QRCode(container, {
                     text: text,
                     width: width,
-                    height: height
+                    height: height,
+                    correctLevel: QRCode.CorrectLevel.L   // 低糾錯，最大容量
                 });
                 setTimeout(() => {
                     const img = container.querySelector('img');
@@ -228,12 +242,6 @@
         });
     }
 
-    function generateDefectId(code, reason) {
-        const now = new Date();
-        const timestamp = now.toISOString().slice(0,19).replace(/[-:T]/g, '').slice(0,14);
-        return `DEFECT-${code}-${timestamp}`;
-    }
-
     async function updateSinglePreview() {
         const type = document.getElementById('printType').value;
         let qrText = '';
@@ -242,11 +250,11 @@
             if (!code) { qrText = ''; }
             else {
                 try {
-                    const data = await apiFetch(`${API_BASE}/materials/${encodeURIComponent(code)}`);
-                    document.getElementById('materialInfo').innerHTML = `<span class="success">✅ ${data.name} (${data.spec || ''}) 庫存: ${data.stock_qty}</span>`;
-                    qrText = code;
+                    const fullText = await getMaterialQRText(code);
+                    qrText = fullText;
+                    document.getElementById('materialInfo').innerHTML = `<span class="success">✅ 即將產生 QR 碼</span>`;
                 } catch(e) {
-                    document.getElementById('materialInfo').innerHTML = `<span class="error">❌ 料號不存在或無法取得: ${e.message}</span>`;
+                    document.getElementById('materialInfo').innerHTML = `<span class="error">❌ ${e.message}</span>`;
                     qrText = '';
                 }
             }
@@ -263,7 +271,7 @@
             const code = document.getElementById('defectCode').value.trim();
             const reason = document.getElementById('defectReason').value.trim();
             if (code || reason) {
-                qrText = generateDefectId(code || 'unknown', reason);
+                qrText = `DEFECT-${code || 'unknown'}-${new Date().toISOString().slice(0,19).replace(/[-:T]/g, '').slice(0,14)}`;
             } else {
                 qrText = '';
             }
@@ -274,11 +282,11 @@
             if (len > 200) {
                 msgDiv.innerHTML = `⚠️ 內容過長 (${len}/200)，將無法生成QR碼`;
                 msgDiv.classList.add('error');
+                qrText = '';
             } else {
                 msgDiv.innerHTML = `${len}/200 字元`;
                 msgDiv.classList.remove('error');
             }
-            if (len > 200) qrText = '';
         }
         if (qrText) {
             await generateQRText('qrPreview', qrText, 180, 180);
@@ -296,8 +304,7 @@
             const code = document.getElementById('materialCode').value.trim();
             if (!code) { showError('singleErrorMsg', '請輸入料號'); return; }
             try {
-                await apiFetch(`${API_BASE}/materials/${encodeURIComponent(code)}`);
-                qrText = code;
+                qrText = await getMaterialQRText(code);
             } catch(e) {
                 showError('singleErrorMsg', '料號不存在，無法列印');
                 return;
@@ -310,7 +317,8 @@
             const code = document.getElementById('defectCode').value.trim();
             const reason = document.getElementById('defectReason').value.trim();
             if (!code && !reason) { showError('singleErrorMsg', '請輸入料號或不良原因'); return; }
-            qrText = generateDefectId(code || 'unknown', reason);
+            const timestamp = new Date().toISOString().slice(0,19).replace(/[-:T]/g, '').slice(0,14);
+            qrText = `DEFECT-${code || 'unknown'}-${timestamp}`;
         } else if (type === 'custom') {
             qrText = document.getElementById('customText').value;
             if (!qrText) { showError('singleErrorMsg', '請輸入自訂內容'); return; }
@@ -325,7 +333,7 @@
         if (qrImg && qrImg.src) imgSrc = qrImg.src;
         if (!imgSrc) {
             const canvas = document.createElement('canvas');
-            new QRCode(canvas, { text: qrText, width: 200, height: 200 });
+            new QRCode(canvas, { text: qrText, width: 200, height: 200, correctLevel: QRCode.CorrectLevel.L });
             await new Promise(r => setTimeout(r, 200));
             imgSrc = canvas.toDataURL();
         }
@@ -348,6 +356,7 @@
         printWindow.print();
     }
 
+    // 批次上傳與列印（保持原樣，但物料驗證部分已支持 token）
     document.getElementById('uploadExcelBtn').onclick = async () => {
         const file = document.getElementById('excelFile').files[0];
         if (!file) { alert('請選擇 Excel 檔案'); return; }
@@ -384,8 +393,8 @@
             previewDiv.innerHTML = `
                 <table class="min-w-full border">
                     <thead><tr><th>料號</th><th>張數</th></tr></thead>
-                    <tbody>${validItems.map(item => `<tr><td>${escapeHtml(item.content)}</td><td>${item.copies}</td>`).join('')}</tbody>
-                  </table>
+                    <tbody>${validItems.map(item => `<tr><td>${escapeHtml(item.content)}</td><td>${item.copies}</td></tr>`).join('')}</tbody>
+                </table>
             `;
             document.getElementById('batchPreviewArea').style.display = 'block';
         };
@@ -411,8 +420,11 @@
         `);
         const body = printWindow.document.getElementById('printBody');
         for (let item of currentBatchItems) {
+            // 批次列印也應該印完整資訊（料號+品名+規格），但為了速度與容量，這裡只印料號
+            // 若要包含品名規格，需要額外 API 呼叫，耗時較長。建議只印料號。
+            const qrText = item.content;
             const canvas = document.createElement('canvas');
-            new QRCode(canvas, { text: item.content, width: 200, height: 200 });
+            new QRCode(canvas, { text: qrText, width: 200, height: 200, correctLevel: QRCode.CorrectLevel.L });
             await new Promise(r => setTimeout(r, 200));
             const imgSrc = canvas.toDataURL();
             for (let i = 0; i < item.copies; i++) {
@@ -455,7 +467,6 @@
         };
     });
 
-    // 檢查登入狀態
     if (!getToken()) {
         alert('請先登入');
         location.href = 'login.html';

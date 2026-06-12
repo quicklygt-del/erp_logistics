@@ -5,18 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
     <title>主儲倉管理中心</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/qrcodejs@1.0.0/qrcode.min.js'"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
         @media (max-width: 640px) {
             .container { padding-left: 0.5rem; padding-right: 0.5rem; }
             table { font-size: 0.75rem; }
-            .qr-btn { font-size: 0.7rem; padding: 0.2rem 0.4rem; }
-        }
-        #qrCodeContainer {
-            width: 200px;
-            height: 200px;
-            margin: 0 auto;
         }
     </style>
 </head>
@@ -60,24 +53,18 @@
         </div>
         <div class="bg-white rounded shadow overflow-x-auto">
             <table class="min-w-full">
-                <thead class="bg-gray-50"><tr><th>料號</th><th>品名</th><th>規格</th><th>庫存數量</th><th>安全庫存</th><th>儲位</th><th>操作</th></tr></thead>
-                <tbody id="materialsTableBody"><tr><td colspan="7" class="text-center py-4">載入中...</td></tr></tbody>
+                <thead class="bg-gray-50">
+                    <tr><th>料號</th><th>品名</th><th>規格</th><th>庫存數量</th><th>安全庫存</th><th>儲位</th></tr>
+                </thead>
+                <tbody id="materialsTableBody">
+                    <tr><td colspan="6" class="text-center py-4">載入中...</tbody>
+                </tbody>
             </table>
         </div>
         <div class="flex justify-between mt-2">
             <span id="pageInfo"></span>
             <div><button id="prevPage" class="border px-2 py-1 rounded">←</button><button id="nextPage" class="border px-2 py-1 rounded ml-1">→</button></div>
         </div>
-    </div>
-</div>
-
-<!-- QR Code 模態框 -->
-<div id="qrModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
-    <div class="bg-white p-6 rounded text-center">
-        <div id="qrCodeContainer" style="width:200px; height:200px; margin:0 auto;"></div>
-        <p id="qrMaterialInfo" class="my-2"></p>
-        <button id="printQrBtn" class="bg-blue-600 text-white px-3 py-1 rounded">列印</button>
-        <button id="closeModalBtn" class="bg-gray-300 px-3 py-1 rounded ml-2">關閉</button>
     </div>
 </div>
 
@@ -110,14 +97,14 @@
             renderMaterials();
             updatePagination();
         } catch(e) {
-            document.getElementById('materialsTableBody').innerHTML = '<tr><td colspan="7" class="text-center text-red-500">載入失敗</td></tr>';
+            document.getElementById('materialsTableBody').innerHTML = '<tr><td colspan="6" class="text-center text-red-500">載入失敗</tbody>';
         }
     }
 
     function renderMaterials() {
         const tb = document.getElementById('materialsTableBody');
-        if (!currentMaterials.length) { tb.innerHTML = '<tr><td colspan="7" class="text-center">無資料</td></tr>'; return; }
-        tb.innerHTML = currentMaterials.map((m, idx) => `
+        if (!currentMaterials.length) { tb.innerHTML = '<tr><td colspan="6" class="text-center">無資料</tbody>'; return; }
+        tb.innerHTML = currentMaterials.map(m => `
             <tr>
                 <td class="px-4 py-2 text-sm font-mono">${escapeHtml(m.material_code)}</td>
                 <td class="px-4 py-2">${escapeHtml(m.name)}</td>
@@ -125,13 +112,8 @@
                 <td class="text-right">${m.stock_qty}</td>
                 <td class="text-right">${m.safety_stock !== undefined ? m.safety_stock : 0}</td>
                 <td class="px-4 py-2">${escapeHtml(m.location || '')}</td>
-                <td class="text-center"><button class="qr-btn text-blue-600" data-idx="${idx}"><i class="fas fa-qrcode"></i> 條碼</button></td>
             </tr>
         `).join('');
-        document.querySelectorAll('.qr-btn').forEach(btn => btn.onclick = () => {
-            const m = currentMaterials[parseInt(btn.dataset.idx, 10)];
-            if (m) showQR(m.material_code, m.name, m.spec || '');
-        });
     }
 
     function updatePagination() {
@@ -161,85 +143,6 @@
         } catch(err) { document.getElementById('uploadMessage').innerHTML = `❌ ${err.message}`; }
     };
     document.getElementById('searchMaterialsBtn').onclick = () => { currentSearch = document.getElementById('searchKeyword').value.trim(); currentPage = 0; loadMaterials(); };
-
-    function buildMaterialQrText(code) {
-        return String(code || '').trim();
-    }
-
-    function renderQRCode(container, code, name, spec) {
-        container.innerHTML = '';
-        if (typeof QRCode === 'undefined') {
-            container.innerHTML = '<p class="text-red-500 text-sm">QR 函式庫載入失敗，請重新整理頁面</p>';
-            return false;
-        }
-        const qrText = buildMaterialQrText(code);
-        if (!qrText) {
-            container.innerHTML = '<p class="text-red-500 text-sm">料號為空，無法生成 QR 碼</p>';
-            return false;
-        }
-        try {
-            new QRCode(container, {
-                text: qrText,
-                width: 200,
-                height: 200,
-                correctLevel: QRCode.CorrectLevel.L
-            });
-            window._printData = { code, name, spec, qrText };
-            return true;
-        } catch (e) {
-            console.error(e);
-            container.innerHTML = `<p class="text-red-500 text-sm">QR 碼生成失敗：${escapeHtml(e.message)}</p>`;
-            return false;
-        }
-    }
-
-    function hasRenderedQr(container) {
-        const img = container.querySelector('img');
-        if (img && img.src) return true;
-        if (container.querySelector('table')) return true;
-        if (container.querySelector('canvas')) return true;
-        return false;
-    }
-
-    function verifyQrImage(container) {
-        if (hasRenderedQr(container)) return true;
-        container.innerHTML = '<p class="text-red-500 text-sm">QR 碼生成失敗，請關閉後重試</p>';
-        return false;
-    }
-
-    function showQR(code, name, spec) {
-        const modal = document.getElementById('qrModal');
-        const container = document.getElementById('qrCodeContainer');
-        const info = document.getElementById('qrMaterialInfo');
-        if (!modal || !container || !info) return;
-
-        info.innerHTML = `${escapeHtml(code)}<br>${escapeHtml(name)}${spec ? `<br><span class="text-gray-500 text-sm">${escapeHtml(spec)}</span>` : ''}`;
-        window._printData = { code, name, spec };
-        container.innerHTML = '<p class="text-gray-400 text-sm">生成中...</p>';
-        modal.classList.remove('hidden');
-
-        // 模態框剛顯示時容器尺寸為 0，需等 layout 完成後再生成 QR
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                if (renderQRCode(container, code, name, spec)) {
-                    setTimeout(() => verifyQrImage(container), 300);
-                }
-            });
-        });
-    }
-
-    document.getElementById('closeModalBtn').onclick = () => document.getElementById('qrModal').classList.add('hidden');
-    document.getElementById('printQrBtn').onclick = () => {
-        const container = document.getElementById('qrCodeContainer');
-        const img = container.querySelector('img');
-        const table = container.querySelector('table');
-        if (!img && !table) { alert('QR 碼尚未生成'); return; }
-        const w = window.open('');
-        const body = img
-            ? `<img src="${img.src}" style="width:200px;">`
-            : `<div style="width:200px;">${table.outerHTML}</div>`;
-        w.document.write(`<html><head><title>列印</title></head><body>${body}<p>${window._printData.code}<br>${window._printData.name}</p><script>window.onload=function(){window.print();window.close();}<\/script></body></html>`);
-    };
 
     function logout() { localStorage.clear(); location.href = 'login.html'; }
     loadMaterials();
