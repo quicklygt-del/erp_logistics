@@ -2,25 +2,33 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
     <title>主儲倉管理中心</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        /* 手机优化 */
+        @media (max-width: 640px) {
+            .container { padding-left: 0.5rem; padding-right: 0.5rem; }
+            table { font-size: 0.75rem; }
+            .qr-btn { font-size: 0.7rem; padding: 0.2rem 0.4rem; }
+        }
+    </style>
 </head>
-<body class="bg-gray-100 p-6">
+<body class="bg-gray-100 p-4">
 <div class="max-w-7xl mx-auto">
-    <!-- 頂部標題與公用功能 -->
-    <div class="flex justify-between items-center mb-4">
+    <!-- 頂部標題與公用功能 - 改为汉堡菜单？暂不修改，保持原样 -->
+    <div class="flex justify-between items-center mb-4 flex-wrap gap-2">
         <div class="flex items-center gap-3">
-            <button onclick="location.href='command_center.html'" class="bg-gray-500 text-white px-3 py-1 rounded text-sm">← 返回指揮塔</button>
+            <button onclick="location.href='command_center.html'" class="bg-gray-500 text-white px-3 py-2 rounded text-sm">← 返回指揮塔</button>
             <h1 class="text-2xl font-bold">📦 主儲倉管理中心</h1>
         </div>
         <div class="space-x-2">
-            <a href="stock_query.html" class="bg-blue-500 text-white px-3 py-1 rounded text-sm">🔍 庫存查詢</a>
-            <a href="history.html" class="bg-blue-500 text-white px-3 py-1 rounded text-sm">📜 歷史紀錄</a>
-            <a href="reprint_qr.html" class="bg-blue-500 text-white px-3 py-1 rounded text-sm">🖨️ QR列印</a>
-            <button onclick="logout()" class="bg-red-500 text-white px-3 py-1 rounded text-sm">登出</button>
+            <a href="stock_query.html" class="bg-blue-500 text-white px-3 py-2 rounded text-sm inline-block">🔍 庫存查詢</a>
+            <a href="history.html" class="bg-blue-500 text-white px-3 py-2 rounded text-sm inline-block">📜 歷史紀錄</a>
+            <a href="reprint_qr.html" class="bg-blue-500 text-white px-3 py-2 rounded text-sm inline-block">🖨️ QR列印</a>
+            <button onclick="logout()" class="bg-red-500 text-white px-3 py-2 rounded text-sm">登出</button>
         </div>
     </div>
 
@@ -34,8 +42,8 @@
         </div>
         <div class="bg-white p-4 rounded shadow mb-4">
             <h2 class="font-bold">📂 上傳 Excel</h2>
-            <div class="flex gap-2 mt-2">
-                <select id="uploadMode" class="border p-1">
+            <div class="flex flex-wrap gap-2 mt-2">
+                <select id="uploadMode" class="border p-1 rounded">
                     <option value="update">更新模式</option>
                     <option value="overwrite">覆蓋模式</option>
                 </select>
@@ -47,7 +55,7 @@
         <div class="bg-white p-4 rounded shadow mb-4">
             <h2 class="font-bold">🔍 物料查詢</h2>
             <div class="flex gap-2">
-                <input type="text" id="searchKeyword" placeholder="料號/品名" class="border flex-1 p-1">
+                <input type="text" id="searchKeyword" placeholder="料號/品名" class="border flex-1 p-2 rounded">
                 <button id="searchMaterialsBtn" class="bg-gray-700 text-white px-3 py-1 rounded">搜尋</button>
             </div>
         </div>
@@ -72,14 +80,14 @@
         <div class="flex justify-between mt-2">
             <span id="pageInfo"></span>
             <div>
-                <button id="prevPage" class="border px-2 py-1">←</button>
-                <button id="nextPage" class="border px-2 py-1 ml-1">→</button>
+                <button id="prevPage" class="border px-2 py-1 rounded">←</button>
+                <button id="nextPage" class="border px-2 py-1 rounded ml-1">→</button>
             </div>
         </div>
     </div>
 </div>
 
-<!-- QR Code 模態框（若有需要） -->
+<!-- QR Code 模態框（初始隱藏） -->
 <div id="qrModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
     <div class="bg-white p-6 rounded text-center">
         <div id="qrCodeContainer"></div>
@@ -197,41 +205,39 @@
         loadMaterials();
     };
 
-    // QR Code 模態框（從 index.html 複製）
+    // ========== QR Code 功能（修復：先顯示模態框再生成QR碼） ==========
     function showQR(code, name, spec) {
-        let modal = document.getElementById('qrModal');
-        if (!modal) {
-            modal = document.createElement('div');
-            modal.id = 'qrModal';
-            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50';
-            modal.innerHTML = `
-                <div class="bg-white p-6 rounded text-center">
-                    <div id="qrCodeContainer"></div>
-                    <p id="qrMaterialInfo" class="my-2"></p>
-                    <button id="printQrBtn" class="bg-blue-600 text-white px-3 py-1 rounded">列印</button>
-                    <button id="closeModalBtn" class="bg-gray-300 px-3 py-1 rounded ml-2">關閉</button>
-                </div>
-            `;
-            document.body.appendChild(modal);
-            document.getElementById('closeModalBtn').onclick = () => modal.classList.add('hidden');
-            document.getElementById('printQrBtn').onclick = () => {
-                const img = document.querySelector('#qrCodeContainer img');
-                if (!img) return;
-                const w = window.open('');
-                w.document.write(`
-                    <html><head><title>列印</title></head>
-                    <body><img src="${img.src}" style="width:200px;"><p>${window._printData.code}<br>${window._printData.name}</p>
-                    <script>window.onload=function(){window.print();window.close();}<\/script></body></html>
-                `);
-            };
-        }
+        const modal = document.getElementById('qrModal');
+        if (!modal) return;
+        // 清空容器
         const container = document.getElementById('qrCodeContainer');
         container.innerHTML = '';
-        new QRCode(container, { text: `料號:${code}\n品名:${name}\n規格:${spec}`, width: 200, height: 200 });
+        // 先顯示模態框（確保QR碼生成時容器可見）
+        modal.classList.remove('hidden');
+        // 生成 QR 碼
+        new QRCode(container, {
+            text: `料號:${code}\n品名:${name}\n規格:${spec}`,
+            width: 200,
+            height: 200
+        });
         document.getElementById('qrMaterialInfo').innerHTML = `${code}<br>${name}`;
         window._printData = { code, name, spec };
-        modal.classList.remove('hidden');
     }
+
+    // 綁定模態框按鈕事件（只需要綁定一次）
+    document.getElementById('closeModalBtn').onclick = () => {
+        document.getElementById('qrModal').classList.add('hidden');
+    };
+    document.getElementById('printQrBtn').onclick = () => {
+        const img = document.querySelector('#qrCodeContainer img');
+        if (!img) return;
+        const w = window.open('');
+        w.document.write(`
+            <html><head><title>列印</title></head>
+            <body><img src="${img.src}" style="width:200px;"><p>${window._printData.code}<br>${window._printData.name}</p>
+            <script>window.onload=function(){window.print();window.close();}<\/script></body></html>
+        `);
+    };
 
     function logout() { localStorage.clear(); location.href = 'login.html'; }
 

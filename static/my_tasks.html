@@ -90,7 +90,6 @@
                     currentSheetNo = btn.dataset.sheet;
                     const currentStatus = btn.dataset.status;
                     try {
-                        // 如果狀態不是「進行中」，則調用開始盤點 API
                         if (currentStatus !== '進行中') {
                             await apiFetch(`${API_BASE}/inventory/sheets/${currentSheetNo}/start`, { method: 'PATCH' });
                         }
@@ -99,9 +98,12 @@
                         document.getElementById('taskList').classList.add('hidden');
                         document.getElementById('sheetTitle').innerHTML = `正在盤點：${currentSheetNo}`;
                         document.getElementById('scanMaterialCode').focus();
-                        if (html5QrCode) { await html5QrCode.stop(); document.getElementById('reader').classList.add('hidden'); }
+                        if (html5QrCode) {
+                            await html5QrCode.stop().catch(console.warn);
+                            html5QrCode = null;
+                        }
+                        document.getElementById('reader').classList.add('hidden');
                     } catch(e) {
-                        // 如果錯誤訊息包含「不允許開始」，可能已經開始，嘗試直接載入
                         if (e.message.includes('不允許開始')) {
                             await loadSheetItems();
                             document.getElementById('workingArea').classList.remove('hidden');
@@ -182,23 +184,46 @@
             const input = card.querySelector('.count-input');
             if (input) input.focus();
             window.scannedCode = code;
-        } else { alert(`找不到料號: ${code}`); }
+        } else {
+            alert(`找不到料號: ${code}`);
+        }
     }
 
     async function startCamera() {
+        if (html5QrCode) {
+            try { await html5QrCode.stop(); } catch(e) { console.warn(e); }
+            html5QrCode = null;
+        }
         const readerDiv = document.getElementById('reader');
         readerDiv.classList.remove('hidden');
-        if (html5QrCode) await html5QrCode.stop();
-        html5QrCode = new Html5Qrcode("reader");
+        readerDiv.innerHTML = `<div id="qr-reader" style="width:100%;"></div><button id="closeCameraBtn" class="mt-2 bg-gray-500 text-white px-3 py-2 rounded w-full">關閉相機</button>`;
+        
+        const qrReader = new Html5Qrcode("qr-reader");
+        html5QrCode = qrReader;
         try {
-            await html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } },
+            await qrReader.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } },
                 (decodedText) => {
-                    html5QrCode.stop();
+                    qrReader.stop().catch(console.warn);
                     readerDiv.classList.add('hidden');
+                    readerDiv.innerHTML = '';
+                    html5QrCode = null;
                     document.getElementById('scanMaterialCode').value = decodedText;
                     handleScan(decodedText);
-                }, () => {});
-        } catch(err) { alert('無法啟動相機: ' + err); readerDiv.classList.add('hidden'); }
+                },
+                (err) => { /* 忽略扫描错误 */ }
+            );
+            document.getElementById('closeCameraBtn').onclick = () => {
+                qrReader.stop().catch(console.warn);
+                readerDiv.classList.add('hidden');
+                readerDiv.innerHTML = '';
+                html5QrCode = null;
+            };
+        } catch(err) {
+            alert('無法啟動相機: ' + err.message);
+            readerDiv.classList.add('hidden');
+            readerDiv.innerHTML = '';
+            html5QrCode = null;
+        }
     }
 
     document.getElementById('submitScanBtn').onclick = () => {
@@ -215,11 +240,16 @@
     document.getElementById('scanMaterialCode').onkeypress = (e) => {
         if (e.key === 'Enter') { e.preventDefault(); handleScan(e.target.value.trim()); e.target.value = ''; }
     };
-    document.getElementById('cameraBtn').onclick = () => { if (html5QrCode) html5QrCode.stop().catch(console.warn); startCamera(); };
+    document.getElementById('cameraBtn').onclick = () => { startCamera(); };
     document.getElementById('backBtn').onclick = () => {
         document.getElementById('workingArea').classList.add('hidden');
         document.getElementById('taskList').classList.remove('hidden');
-        if (html5QrCode) { html5QrCode.stop().catch(console.warn); document.getElementById('reader').classList.add('hidden'); }
+        if (html5QrCode) {
+            html5QrCode.stop().catch(console.warn);
+            html5QrCode = null;
+        }
+        document.getElementById('reader').classList.add('hidden');
+        document.getElementById('reader').innerHTML = '';
         loadTasks();
     };
     document.getElementById('finishSheetBtn').onclick = async () => {
@@ -229,6 +259,12 @@
                 alert('盤點結束');
                 document.getElementById('workingArea').classList.add('hidden');
                 document.getElementById('taskList').classList.remove('hidden');
+                if (html5QrCode) {
+                    html5QrCode.stop().catch(console.warn);
+                    html5QrCode = null;
+                }
+                document.getElementById('reader').classList.add('hidden');
+                document.getElementById('reader').innerHTML = '';
                 loadTasks();
             } catch(e) { alert('結束失敗: ' + e.message); }
         }
