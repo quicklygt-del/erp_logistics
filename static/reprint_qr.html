@@ -152,6 +152,34 @@
     let currentSingleQRCode = null;
     let currentBatchItems = [];
 
+    // ---------- 認證輔助函數 ----------
+    function getToken() {
+        return localStorage.getItem('access_token');
+    }
+
+    async function apiFetch(url, opts = {}) {
+        const token = getToken();
+        if (!token) {
+            alert('請先登入');
+            location.href = 'login.html';
+            throw new Error('未登入');
+        }
+        opts.headers = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            ...(opts.headers || {})
+        };
+        const res = await fetch(url, opts);
+        if (res.status === 401) {
+            alert('登入過期，請重新登入');
+            localStorage.removeItem('access_token');
+            location.href = 'login.html';
+            throw new Error('Unauthorized');
+        }
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+    }
+
     function escapeHtml(s) { if (!s) return ''; return s.replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m])); }
     function showError(area, msg) {
         const div = document.getElementById(area);
@@ -214,17 +242,11 @@
             if (!code) { qrText = ''; }
             else {
                 try {
-                    const res = await fetch(`${API_BASE}/materials/${encodeURIComponent(code)}`);
-                    if (res.ok) {
-                        const data = await res.json();
-                        document.getElementById('materialInfo').innerHTML = `<span class="success">✅ ${data.name} (${data.spec || ''}) 庫存: ${data.stock_qty}</span>`;
-                        qrText = code;
-                    } else {
-                        document.getElementById('materialInfo').innerHTML = `<span class="error">❌ 料號不存在，請先在主儲倉建檔</span>`;
-                        qrText = '';
-                    }
+                    const data = await apiFetch(`${API_BASE}/materials/${encodeURIComponent(code)}`);
+                    document.getElementById('materialInfo').innerHTML = `<span class="success">✅ ${data.name} (${data.spec || ''}) 庫存: ${data.stock_qty}</span>`;
+                    qrText = code;
                 } catch(e) {
-                    document.getElementById('materialInfo').innerHTML = `<span class="error">❌ 無法驗證料號</span>`;
+                    document.getElementById('materialInfo').innerHTML = `<span class="error">❌ 料號不存在或無法取得: ${e.message}</span>`;
                     qrText = '';
                 }
             }
@@ -274,8 +296,7 @@
             const code = document.getElementById('materialCode').value.trim();
             if (!code) { showError('singleErrorMsg', '請輸入料號'); return; }
             try {
-                const res = await fetch(`${API_BASE}/materials/${encodeURIComponent(code)}`);
-                if (!res.ok) throw new Error('物料不存在');
+                await apiFetch(`${API_BASE}/materials/${encodeURIComponent(code)}`);
                 qrText = code;
             } catch(e) {
                 showError('singleErrorMsg', '料號不存在，無法列印');
@@ -351,8 +372,7 @@
             const validItems = [];
             for (let it of items) {
                 try {
-                    const res = await fetch(`${API_BASE}/materials/${encodeURIComponent(it.materialCode)}`);
-                    if (!res.ok) throw new Error();
+                    await apiFetch(`${API_BASE}/materials/${encodeURIComponent(it.materialCode)}`);
                     validItems.push({ content: it.materialCode, copies: it.copies });
                 } catch(e) {
                     alert(`料號 ${it.materialCode} 不存在，已跳過`);
@@ -364,7 +384,7 @@
             previewDiv.innerHTML = `
                 <table class="min-w-full border">
                     <thead><tr><th>料號</th><th>張數</th></tr></thead>
-                    <tbody>${validItems.map(item => `<tr><td>${escapeHtml(item.content)}</td><td>${item.copies}</td></tr>`).join('')}</tbody>
+                    <tbody>${validItems.map(item => `<tr><td>${escapeHtml(item.content)}</td><td>${item.copies}</td>`).join('')}</tbody>
                   </table>
             `;
             document.getElementById('batchPreviewArea').style.display = 'block';
@@ -435,7 +455,13 @@
         };
     });
 
-    updateSinglePreview();
+    // 檢查登入狀態
+    if (!getToken()) {
+        alert('請先登入');
+        location.href = 'login.html';
+    } else {
+        updateSinglePreview();
+    }
 </script>
 </body>
 </html>
