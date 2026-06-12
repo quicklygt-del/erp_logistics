@@ -198,17 +198,9 @@
         }
     }
 
-    // 物料 QR 碼內容：料號 + 空格 + 品名 + 空格 + 規格（不包含換行及標籤）
-    async function getMaterialQRText(code) {
-        try {
-            const data = await apiFetch(`${API_BASE}/materials/${encodeURIComponent(code)}`);
-            const name = data.name || '';
-            const spec = data.spec || '';
-            // 用空格分隔，避免特殊字符，總長度遠小於 200 字元
-            return `${code} ${name} ${spec}`.trim();
-        } catch(e) {
-            throw new Error('無法取得物料資訊');
-        }
+    // 物料 QR 碼只編碼料號
+    function getMaterialQRText(code) {
+        return code.trim();
     }
 
     async function generateQRText(containerId, text, width=180, height=180) {
@@ -228,7 +220,7 @@
                     text: text,
                     width: width,
                     height: height,
-                    correctLevel: QRCode.CorrectLevel.L   // 低糾錯，最大容量
+                    correctLevel: QRCode.CorrectLevel.L
                 });
                 setTimeout(() => {
                     const img = container.querySelector('img');
@@ -245,16 +237,18 @@
     async function updateSinglePreview() {
         const type = document.getElementById('printType').value;
         let qrText = '';
+        let materialInfoText = '';
         if (type === 'material') {
             const code = document.getElementById('materialCode').value.trim();
             if (!code) { qrText = ''; }
             else {
                 try {
-                    const fullText = await getMaterialQRText(code);
-                    qrText = fullText;
-                    document.getElementById('materialInfo').innerHTML = `<span class="success">✅ 即將產生 QR 碼</span>`;
+                    const data = await apiFetch(`${API_BASE}/materials/${encodeURIComponent(code)}`);
+                    materialInfoText = `${data.name} (${data.spec || ''}) 庫存: ${data.stock_qty}`;
+                    document.getElementById('materialInfo').innerHTML = `<span class="success">✅ ${escapeHtml(materialInfoText)}</span>`;
+                    qrText = getMaterialQRText(code);
                 } catch(e) {
-                    document.getElementById('materialInfo').innerHTML = `<span class="error">❌ ${e.message}</span>`;
+                    document.getElementById('materialInfo').innerHTML = `<span class="error">❌ 料號不存在或無法取得: ${e.message}</span>`;
                     qrText = '';
                 }
             }
@@ -300,11 +294,14 @@
     async function singlePrint() {
         const type = document.getElementById('printType').value;
         let qrText = '';
+        let printMaterialInfo = null;
         if (type === 'material') {
             const code = document.getElementById('materialCode').value.trim();
             if (!code) { showError('singleErrorMsg', '請輸入料號'); return; }
             try {
-                qrText = await getMaterialQRText(code);
+                const data = await apiFetch(`${API_BASE}/materials/${encodeURIComponent(code)}`);
+                printMaterialInfo = `${data.name} ${data.spec || ''}`;
+                qrText = getMaterialQRText(code);
             } catch(e) {
                 showError('singleErrorMsg', '料號不存在，無法列印');
                 return;
@@ -343,12 +340,18 @@
             <style>
                 @page { margin: 0; }
                 body { margin: 0; padding: 0; text-align: center; }
-                .qr-page { page-break-after: always; display: flex; justify-content: center; align-items: center; height: 100vh; }
+                .qr-page { page-break-after: always; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; }
                 .qr-img { ${sizeStyle} }
+                .info-text { margin-top: 10px; font-size: 12px; text-align: center; }
             </style>
             </head>
             <body>
-                ${Array(copies).fill(0).map(() => `<div class="qr-page"><img class="qr-img" src="${imgSrc}"></div>`).join('')}
+                ${Array(copies).fill(0).map(() => `
+                    <div class="qr-page">
+                        <img class="qr-img" src="${imgSrc}">
+                        ${printMaterialInfo ? `<div class="info-text">${escapeHtml(printMaterialInfo)}</div>` : ''}
+                    </div>
+                `).join('')}
             </body>
             </html>
         `);
@@ -393,7 +396,7 @@
             previewDiv.innerHTML = `
                 <table class="min-w-full border">
                     <thead><tr><th>料號</th><th>張數</th></tr></thead>
-                    <tbody>${validItems.map(item => `<tr><td>${escapeHtml(item.content)}</td><td>${item.copies}</td></tr>`).join('')}</tbody>
+                    <tbody>${validItems.map(item => `<tr><td>${escapeHtml(item.content)}</td><td>${item.copies}</td>`).join('')}</tbody>
                 </table>
             `;
             document.getElementById('batchPreviewArea').style.display = 'block';
@@ -411,8 +414,9 @@
             <style>
                 @page { margin: 0; }
                 body { margin: 0; padding: 0; text-align: center; }
-                .qr-page { page-break-after: always; display: flex; justify-content: center; align-items: center; height: 100vh; }
+                .qr-page { page-break-after: always; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; }
                 .qr-img { ${sizeStyle} }
+                .info-text { margin-top: 10px; font-size: 12px; text-align: center; }
             </style>
             </head>
             <body id="printBody"></body>
@@ -420,8 +424,6 @@
         `);
         const body = printWindow.document.getElementById('printBody');
         for (let item of currentBatchItems) {
-            // 批次列印也應該印完整資訊（料號+品名+規格），但為了速度與容量，這裡只印料號
-            // 若要包含品名規格，需要額外 API 呼叫，耗時較長。建議只印料號。
             const qrText = item.content;
             const canvas = document.createElement('canvas');
             new QRCode(canvas, { text: qrText, width: 200, height: 200, correctLevel: QRCode.CorrectLevel.L });
@@ -434,6 +436,7 @@
                 img.className = 'qr-img';
                 img.src = imgSrc;
                 div.appendChild(img);
+                // 批次列印時不附帶文字（因無品名規格資訊，可省略）
                 body.appendChild(div);
             }
         }
