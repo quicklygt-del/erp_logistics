@@ -2,31 +2,81 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
     <title>我的盤點任務</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-    <style>.highlight { background-color: #fff3cd; } #reader { width: 100%; max-width: 500px; margin-top: 10px; }</style>
+    <style>
+        .material-card {
+            background: white;
+            border-radius: 16px;
+            border: 1px solid #e5e7eb;
+            padding: 0.75rem;
+            margin-bottom: 0.75rem;
+            transition: background 0.2s;
+        }
+        .material-card.highlight {
+            background-color: #fff3cd;
+        }
+        .touch-btn {
+            min-height: 48px;
+            font-size: 1rem;
+            padding: 0.5rem 1rem;
+        }
+        .touch-input {
+            font-size: 1rem;
+            padding: 0.75rem;
+        }
+        #reader {
+            width: 100%;
+            max-width: 500px;
+            margin-top: 10px;
+        }
+        @media (max-width: 640px) {
+            .material-card { padding: 0.6rem; }
+        }
+    </style>
 </head>
-<body class="bg-gray-100 p-6">
+<body class="bg-gray-100 p-4">
 <div class="max-w-7xl mx-auto">
     <div class="flex justify-between items-center mb-4">
-        <h1 class="text-3xl font-bold">📋 我的盤點任務</h1>
-        <div><button onclick="location.href='worker_dashboard.html'" class="bg-gray-500 text-white px-3 py-1 rounded text-sm">← 返回工作台</button><button onclick="logout()" class="bg-red-500 text-white px-3 py-1 rounded text-sm ml-2">登出</button></div>
+        <h1 class="text-2xl font-bold">📋 我的盤點任務</h1>
+        <div>
+            <button onclick="location.href='worker_dashboard.html'" class="bg-gray-500 text-white px-3 py-2 rounded text-sm">← 返回工作台</button>
+            <button onclick="logout()" class="bg-red-500 text-white px-3 py-2 rounded text-sm ml-2">登出</button>
+        </div>
     </div>
-    <div id="taskList" class="bg-white rounded shadow p-4"><div id="taskListContent" class="text-center py-4">載入中...</div></div>
-    <div id="workingArea" class="bg-white rounded shadow p-4 mt-4 hidden">
-        <div class="flex justify-between items-center mb-3"><h2 id="sheetTitle" class="text-lg font-bold"></h2><button id="backBtn" class="bg-gray-500 text-white px-3 py-1 rounded">返回任務列表</button></div>
-        <div class="flex flex-wrap gap-2 mb-3 bg-gray-50 p-2 rounded">
-            <input type="text" id="scanMaterialCode" placeholder="掃描或輸入料號 (按 Enter 定位)" class="border flex-1 p-2 rounded" autofocus>
-            <input type="number" id="countedQty" placeholder="實盤數量" value="1" class="border w-24 p-2 rounded" min="0">
-            <button id="submitScanBtn" class="bg-green-600 text-white px-4 py-2 rounded">提交盤點</button>
-            <button id="cameraBtn" class="bg-purple-600 text-white px-4 py-2 rounded">📷 掃描</button>
+
+    <!-- 任務列表 -->
+    <div id="taskList" class="bg-white rounded shadow p-4 mb-4">
+        <div id="taskListContent" class="text-center py-4">載入中...</div>
+    </div>
+
+    <!-- 盤點工作區 -->
+    <div id="workingArea" class="bg-white rounded shadow p-4 hidden">
+        <div class="flex justify-between items-center mb-3">
+            <h2 id="sheetTitle" class="text-lg font-bold"></h2>
+            <button id="backBtn" class="bg-gray-500 text-white px-3 py-2 rounded text-sm">返回任務列表</button>
+        </div>
+
+        <!-- 掃描輸入區 -->
+        <div class="flex flex-wrap gap-2 mb-4 bg-gray-50 p-3 rounded">
+            <input type="text" id="scanMaterialCode" placeholder="掃描或輸入料號 (按 Enter 定位)" class="border flex-1 p-3 rounded touch-input" autofocus>
+            <input type="number" id="countedQty" placeholder="數量" value="1" class="border w-24 p-3 rounded touch-input" min="0">
+            <button id="submitScanBtn" class="bg-green-600 text-white px-4 py-3 rounded touch-btn">提交盤點</button>
+            <button id="cameraBtn" class="bg-purple-600 text-white px-4 py-3 rounded touch-btn">📷 掃描</button>
         </div>
         <div id="reader" class="hidden"></div>
-        <div class="overflow-x-auto"><table class="min-w-full border text-sm"><thead class="bg-gray-50"><tr><th>料號</th><th>品名</th><th>規格</th><th>賬面庫存</th><th>實盤數量</th><th>差異</th><th>狀態</th></tr></thead><tbody id="itemsTbody"></tbody></table></div>
-        <button id="finishSheetBtn" class="mt-3 bg-blue-600 text-white px-4 py-2 rounded">結束盤點</button>
+
+        <!-- 物料卡片列表 -->
+        <div id="itemsContainer" class="max-h-96 overflow-auto">
+            <div class="text-center py-8 text-gray-500">請選擇盤點單</div>
+        </div>
+
+        <button id="finishSheetBtn" class="mt-4 bg-blue-600 text-white w-full py-3 rounded-lg touch-btn">✅ 結束盤點</button>
     </div>
 </div>
+
 <script>
     const API_BASE = "/api/v1";
     let token = localStorage.getItem('access_token');
@@ -34,6 +84,7 @@
     let currentUsername = localStorage.getItem('username') || '';
     let html5QrCode = null;
     let currentSheetNo = "";
+    let currentItems = [];
 
     async function apiFetch(url, opts = {}) {
         opts.headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, ...(opts.headers || {}) };
@@ -43,36 +94,159 @@
         return res.json();
     }
     function escapeHtml(s) { return s.replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m])); }
+
     async function loadTasks() {
         try {
             const tasks = await apiFetch(`${API_BASE}/inventory/my-tasks`);
             const container = document.getElementById('taskListContent');
-            if (!tasks.length) { container.innerHTML = '<div class="text-gray-400">暫無指派給您的盤點任務</div>'; return; }
-            container.innerHTML = tasks.map(t => `<div class="border rounded p-3 mb-2 flex justify-between items-center"><div><strong>${escapeHtml(t.sheet_no)}</strong> - 倉庫:${escapeHtml(t.warehouse)} 狀態:${t.status}</div><button class="start-sheet bg-green-600 text-white px-3 py-1 rounded" data-sheet="${t.sheet_no}">開始盤點</button></div>`).join('');
-            document.querySelectorAll('.start-sheet').forEach(btn => btn.onclick = async () => { currentSheetNo = btn.dataset.sheet; await loadSheetItems(); document.getElementById('workingArea').classList.remove('hidden'); document.getElementById('taskList').classList.add('hidden'); document.getElementById('sheetTitle').innerHTML = `正在盤點：${currentSheetNo}`; document.getElementById('scanMaterialCode').focus(); if (html5QrCode) { await html5QrCode.stop(); document.getElementById('reader').classList.add('hidden'); } });
+            if (!tasks.length) {
+                container.innerHTML = '<div class="text-gray-400">暫無指派給您的盤點任務</div>';
+                return;
+            }
+            container.innerHTML = tasks.map(t => `
+                <div class="border rounded p-3 mb-2 flex justify-between items-center">
+                    <div><strong>${escapeHtml(t.sheet_no)}</strong> - 倉庫:${escapeHtml(t.warehouse)} 狀態:${t.status}</div>
+                    <button class="start-sheet bg-green-600 text-white px-3 py-2 rounded text-sm touch-btn" data-sheet="${t.sheet_no}">開始盤點</button>
+                </div>
+            `).join('');
+            document.querySelectorAll('.start-sheet').forEach(btn => {
+                btn.onclick = async () => {
+                    currentSheetNo = btn.dataset.sheet;
+                    await loadSheetItems();
+                    document.getElementById('workingArea').classList.remove('hidden');
+                    document.getElementById('taskList').classList.add('hidden');
+                    document.getElementById('sheetTitle').innerHTML = `正在盤點：${currentSheetNo}`;
+                    document.getElementById('scanMaterialCode').focus();
+                    if (html5QrCode) { await html5QrCode.stop(); document.getElementById('reader').classList.add('hidden'); }
+                };
+            });
         } catch(e) { alert('載入任務失敗: ' + e.message); }
     }
+
     async function loadSheetItems() {
         try {
             const items = await apiFetch(`${API_BASE}/inventory/sheets/${currentSheetNo}/items`);
-            const tbody = document.getElementById('itemsTbody');
-            if (!items.length) { tbody.innerHTML = '<tr><td colspan="7" class="text-center">無物料</td></tr>'; return; }
-            tbody.innerHTML = items.map(it => `<tr data-code="${escapeHtml(it.material_code)}"><td>${escapeHtml(it.material_code)}</td><td>${escapeHtml(it.name)}</td><td>${escapeHtml(it.spec)}</td><td class="text-right">${it.expected_qty ?? '-'}</td><td class="text-right counted-qty">${it.counted_qty ?? '-'}</td><td class="text-right diff-qty">${it.diff_qty ?? '-'}</td><td>${it.status === '已盤' ? '已盤' : '未盤'}</td></tr>`).join('');
+            const container = document.getElementById('itemsContainer');
+            if (!items.length) {
+                container.innerHTML = '<div class="text-center py-8 text-gray-500">無物料</div>';
+                currentItems = [];
+                return;
+            }
+            currentItems = items.map(it => ({
+                code: it.material_code,
+                name: it.name,
+                spec: it.spec,
+                expected: it.expected_qty,
+                counted: it.counted_qty || 0,
+                diff: it.diff_qty || 0,
+                status: it.status
+            }));
+            renderItems();
         } catch(e) { alert('載入明細失敗: ' + e.message); }
     }
+
+    function renderItems() {
+        const container = document.getElementById('itemsContainer');
+        container.innerHTML = currentItems.map((item, idx) => `
+            <div class="material-card" data-code="${escapeHtml(item.code)}" data-idx="${idx}">
+                <div class="font-bold text-lg">${escapeHtml(item.code)} ${escapeHtml(item.name)}</div>
+                <div class="text-gray-600 text-sm mb-1">規格：${escapeHtml(item.spec)}</div>
+                <div class="flex justify-between items-center mb-2">
+                    <span>賬面庫存：<span class="font-semibold">${item.expected}</span></span>
+                    <span>目前實盤：<span class="counted-val">${item.counted}</span></span>
+                    <span>差異：<span class="diff-val">${item.diff}</span></span>
+                </div>
+                <div class="flex flex-wrap gap-2 items-center">
+                    <input type="number" class="count-input border rounded-lg p-2 w-28 text-center" value="${item.counted}" min="0" max="${item.expected}" data-idx="${idx}">
+                    <button class="update-btn bg-blue-600 text-white px-3 py-2 rounded text-sm touch-btn" data-idx="${idx}">更新</button>
+                </div>
+                <div class="text-xs text-gray-500 mt-1">狀態：${item.status === '已盤' ? '✅ 已盤' : '⏳ 未盤'}</div>
+            </div>
+        `).join('');
+
+        document.querySelectorAll('.update-btn').forEach(btn => {
+            btn.onclick = async () => {
+                const idx = btn.dataset.idx;
+                const newCount = parseInt(document.querySelector(`.count-input[data-idx="${idx}"]`).value) || 0;
+                await submitCount(currentItems[idx].code, newCount);
+            };
+        });
+    }
+
     async function submitCount(materialCode, qty) {
         try {
-            await apiFetch(`${API_BASE}/inventory/sheets/${currentSheetNo}/scan`, { method: 'POST', body: JSON.stringify({ material_code: materialCode, counted_qty: qty, operator: currentUsername }) });
-            alert('盤點成功'); await loadSheetItems();
+            await apiFetch(`${API_BASE}/inventory/sheets/${currentSheetNo}/scan`, {
+                method: 'POST',
+                body: JSON.stringify({ material_code: materialCode, counted_qty: qty, operator: currentUsername })
+            });
+            alert('盤點成功');
+            await loadSheetItems();
         } catch(e) { alert('盤點失敗: ' + e.message); }
     }
-    function handleScan(code) { const row = document.querySelector(`tr[data-code="${escapeHtml(code)}"]`); if (row) { row.scrollIntoView({ behavior: 'smooth', block: 'center' }); row.classList.add('highlight'); setTimeout(() => row.classList.remove('highlight'), 1000); document.getElementById('countedQty').focus(); window.scannedCode = code; } else { alert(`找不到料號: ${code}`); } }
-    async function startCamera() { const readerDiv = document.getElementById('reader'); readerDiv.classList.remove('hidden'); if (html5QrCode) await html5QrCode.stop(); html5QrCode = new Html5Qrcode("reader"); try { await html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } }, (decodedText) => { html5QrCode.stop(); readerDiv.classList.add('hidden'); document.getElementById('scanMaterialCode').value = decodedText; handleScan(decodedText); }, () => {}); } catch(err) { alert('無法啟動相機: ' + err); readerDiv.classList.add('hidden'); } }
-    document.getElementById('submitScanBtn').onclick = () => { let materialCode = document.getElementById('scanMaterialCode').value.trim(); if (!materialCode && window.scannedCode) materialCode = window.scannedCode; if (!materialCode) { alert('請先掃描或輸入料號'); return; } const qty = parseInt(document.getElementById('countedQty').value); if (isNaN(qty) || qty < 0) { alert('請輸入有效數量'); return; } submitCount(materialCode, qty); document.getElementById('scanMaterialCode').value = ''; document.getElementById('countedQty').value = '1'; window.scannedCode = null; };
-    document.getElementById('scanMaterialCode').onkeypress = (e) => { if (e.key === 'Enter') { e.preventDefault(); handleScan(e.target.value.trim()); e.target.value = ''; } };
+
+    // 掃描定位功能
+    function handleScan(code) {
+        const card = document.querySelector(`.material-card[data-code="${escapeHtml(code)}"]`);
+        if (card) {
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            card.classList.add('highlight');
+            setTimeout(() => card.classList.remove('highlight'), 1500);
+            const input = card.querySelector('.count-input');
+            if (input) input.focus();
+            window.scannedCode = code;
+        } else {
+            alert(`找不到料號: ${code}`);
+        }
+    }
+
+    async function startCamera() {
+        const readerDiv = document.getElementById('reader');
+        readerDiv.classList.remove('hidden');
+        if (html5QrCode) await html5QrCode.stop();
+        html5QrCode = new Html5Qrcode("reader");
+        try {
+            await html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } },
+                (decodedText) => {
+                    html5QrCode.stop();
+                    readerDiv.classList.add('hidden');
+                    document.getElementById('scanMaterialCode').value = decodedText;
+                    handleScan(decodedText);
+                }, () => {});
+        } catch(err) { alert('無法啟動相機: ' + err); readerDiv.classList.add('hidden'); }
+    }
+
+    document.getElementById('submitScanBtn').onclick = () => {
+        let materialCode = document.getElementById('scanMaterialCode').value.trim();
+        if (!materialCode && window.scannedCode) materialCode = window.scannedCode;
+        if (!materialCode) { alert('請先掃描或輸入料號'); return; }
+        const qty = parseInt(document.getElementById('countedQty').value);
+        if (isNaN(qty) || qty < 0) { alert('請輸入有效數量'); return; }
+        submitCount(materialCode, qty);
+        document.getElementById('scanMaterialCode').value = '';
+        document.getElementById('countedQty').value = '1';
+        window.scannedCode = null;
+    };
+    document.getElementById('scanMaterialCode').onkeypress = (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); handleScan(e.target.value.trim()); e.target.value = ''; }
+    };
     document.getElementById('cameraBtn').onclick = () => { if (html5QrCode) html5QrCode.stop().catch(console.warn); startCamera(); };
-    document.getElementById('backBtn').onclick = () => { document.getElementById('workingArea').classList.add('hidden'); document.getElementById('taskList').classList.remove('hidden'); if (html5QrCode) { html5QrCode.stop().catch(console.warn); document.getElementById('reader').classList.add('hidden'); } loadTasks(); };
-    document.getElementById('finishSheetBtn').onclick = async () => { if (confirm('確定結束盤點？結束後不可再修改。')) { try { await apiFetch(`${API_BASE}/inventory/sheets/${currentSheetNo}/finish`, { method: 'PATCH' }); alert('盤點結束'); document.getElementById('workingArea').classList.add('hidden'); document.getElementById('taskList').classList.remove('hidden'); loadTasks(); } catch(e) { alert('結束失敗: ' + e.message); } } };
+    document.getElementById('backBtn').onclick = () => {
+        document.getElementById('workingArea').classList.add('hidden');
+        document.getElementById('taskList').classList.remove('hidden');
+        if (html5QrCode) { html5QrCode.stop().catch(console.warn); document.getElementById('reader').classList.add('hidden'); }
+        loadTasks();
+    };
+    document.getElementById('finishSheetBtn').onclick = async () => {
+        if (confirm('確定結束盤點？結束後不可再修改。')) {
+            try {
+                await apiFetch(`${API_BASE}/inventory/sheets/${currentSheetNo}/finish`, { method: 'PATCH' });
+                alert('盤點結束');
+                document.getElementById('workingArea').classList.add('hidden');
+                document.getElementById('taskList').classList.remove('hidden');
+                loadTasks();
+            } catch(e) { alert('結束失敗: ' + e.message); }
+        }
+    };
     window.logout = () => { localStorage.clear(); location.href = 'login.html'; };
     loadTasks();
 </script>
