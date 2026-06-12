@@ -30,14 +30,17 @@
             .task-title { font-size: 1rem; }
             .btn-mobile { padding: 0.75rem 1rem; font-size: 0.9rem; }
             .welcome-text { font-size: 0.9rem; }
+            /* 顶部按钮组增加间距并允许换行 */
+            .top-buttons { gap: 0.75rem; flex-wrap: wrap; }
+            .top-buttons a, .top-buttons button { padding: 0.5rem 0.75rem; font-size: 0.8rem; }
         }
     </style>
 </head>
 <body class="bg-gray-100 p-4">
 <div class="max-w-7xl mx-auto">
-    <div class="flex justify-between items-center mb-4 flex-wrap gap-2">
+    <div class="flex justify-between items-center mb-4 flex-wrap gap-2 top-buttons">
         <h1 class="text-2xl font-bold">📦 倉管員工作台</h1>
-        <div class="space-x-2">
+        <div class="space-x-2 flex flex-wrap gap-2">
             <a href="stock_query.html" class="bg-blue-500 text-white px-3 py-2 rounded text-sm inline-block">📊 庫存查詢</a>
             <a href="history.html" class="bg-blue-500 text-white px-3 py-2 rounded text-sm inline-block">📜 歷史紀錄</a>
             <a href="reprint_qr.html" class="bg-blue-500 text-white px-3 py-2 rounded text-sm inline-block">🖨️ QR列印</a>
@@ -64,7 +67,7 @@
         <div class="mt-2 text-xs text-gray-500">※ 僅顯示未完成的任務數量</div>
     </div>
 
-    <!-- 任務卡片區（手機優化：減少內邊距、增大點擊區域） -->
+    <!-- 任務卡片區 -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6 task-grid">
         <div class="bg-white rounded-xl shadow p-3 task-card card-hover cursor-pointer text-center" onclick="redirectWithUser('my_inbound_tasks.html')">
             <div class="text-3xl mb-1 task-icon">📥</div>
@@ -113,13 +116,10 @@
     if (targetUser && (currentRole === 'admin' || currentRole === 'warehouse')) {
         isViewingOther = true;
         document.getElementById('welcomeMessage').innerHTML = `👥 正在查看 <strong>${escapeHtml(targetUser)}</strong> 的工作台（管理員模式）`;
-        // 主管可以查看他人統計，但倉管員永遠不會進到這裡
         loadUserTasks(targetUser);
     } else {
         document.getElementById('welcomeMessage').innerHTML = `歡迎，${escapeHtml(currentUsername)} 👋`;
-        // 倉管員不顯示任務統計區塊，也不呼叫API
         if (currentRole !== 'operator') {
-            // 非operator（如admin/warehouse查看自己）也顯示統計
             loadUserTasks(currentUsername);
         }
     }

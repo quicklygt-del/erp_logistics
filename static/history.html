@@ -2,6 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
     <title>歷史紀錄查詢</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -15,19 +16,47 @@
             border-collapse: collapse;
             width: 100%;
         }
+        /* 手機優化：垂直排列日期選擇器與按鈕，表格字體略縮 */
+        @media (max-width: 640px) {
+            .date-group {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+            .date-group > div {
+                width: 100%;
+            }
+            .action-buttons {
+                flex-wrap: wrap;
+                justify-content: stretch;
+            }
+            .action-buttons button {
+                flex: 1;
+            }
+            .tab-buttons {
+                flex-wrap: wrap;
+                gap: 0.5rem;
+            }
+            .tab-buttons button {
+                flex: 1 0 auto;
+                text-align: center;
+            }
+            .history-table th, .history-table td {
+                font-size: 0.75rem;
+                padding: 0.3rem;
+            }
+        }
     </style>
 </head>
 <body class="bg-gray-100 p-6">
 <div class="max-w-7xl mx-auto">
     <div class="flex justify-between items-center mb-6">
         <div class="flex items-center gap-3">
-            <!-- 改為返回上一頁，而非固定指揮塔 -->
             <button onclick="history.back()" class="bg-gray-500 text-white px-3 py-1 rounded text-sm">← 返回</button>
             <h1 class="text-3xl font-bold">📜 歷史紀錄查詢</h1>
         </div>
     </div>
 
-    <div class="flex flex-wrap gap-2 mb-4 border-b pb-2">
+    <div class="flex flex-wrap gap-2 mb-4 border-b pb-2 tab-buttons">
         <button id="tabInboundBtn" class="px-4 py-2 bg-blue-600 text-white rounded">📥 入庫完成歷史</button>
         <button id="tabOutboundBtn" class="px-4 py-2 bg-gray-500 text-white rounded">📤 出庫完成歷史</button>
         <button id="tabReturnBtn" class="px-4 py-2 bg-gray-500 text-white rounded">↩️ 退貨歷史</button>
@@ -35,11 +64,13 @@
 
     <!-- 入庫完成歷史 -->
     <div id="inboundPanel" class="bg-white rounded shadow p-4">
-        <div class="flex flex-wrap gap-3 items-end mb-3">
+        <div class="flex flex-wrap gap-3 items-end mb-3 date-group">
             <div><label class="block text-sm">起始日期</label><input type="date" id="inboundStart" class="border p-2 rounded"></div>
             <div><label class="block text-sm">結束日期</label><input type="date" id="inboundEnd" class="border p-2 rounded"></div>
-            <button id="searchInboundBtn" class="bg-green-600 text-white px-4 py-2 rounded">查詢</button>
-            <button id="refreshInboundBtn" class="bg-gray-500 text-white px-4 py-2 rounded">重新整理</button>
+            <div class="action-buttons flex gap-2">
+                <button id="searchInboundBtn" class="bg-green-600 text-white px-4 py-2 rounded">查詢</button>
+                <button id="refreshInboundBtn" class="bg-gray-500 text-white px-4 py-2 rounded">重新整理</button>
+            </div>
         </div>
         <div class="overflow-x-auto">
             <table class="history-table min-w-full text-sm">
@@ -49,7 +80,7 @@
                     </tr>
                 </thead>
                 <tbody id="inboundTbody">
-                    <tr><td colspan="7" class="text-center py-4">載入中...</td></tr>
+                    <tr><td colspan="7" class="text-center py-4">載入中...<\/tr>
                 </tbody>
             </table>
         </div>
@@ -58,11 +89,13 @@
 
     <!-- 出庫完成歷史 -->
     <div id="outboundPanel" class="bg-white rounded shadow p-4 hidden">
-        <div class="flex flex-wrap gap-3 items-end mb-3">
+        <div class="flex flex-wrap gap-3 items-end mb-3 date-group">
             <div><label class="block text-sm">起始日期</label><input type="date" id="outboundStart" class="border p-2 rounded"></div>
             <div><label class="block text-sm">結束日期</label><input type="date" id="outboundEnd" class="border p-2 rounded"></div>
-            <button id="searchOutboundBtn" class="bg-green-600 text-white px-4 py-2 rounded">查詢</button>
-            <button id="refreshOutboundBtn" class="bg-gray-500 text-white px-4 py-2 rounded">重新整理</button>
+            <div class="action-buttons flex gap-2">
+                <button id="searchOutboundBtn" class="bg-green-600 text-white px-4 py-2 rounded">查詢</button>
+                <button id="refreshOutboundBtn" class="bg-gray-500 text-white px-4 py-2 rounded">重新整理</button>
+            </div>
         </div>
         <div class="overflow-x-auto">
             <table class="history-table min-w-full text-sm">
@@ -72,7 +105,7 @@
                     </tr>
                 </thead>
                 <tbody id="outboundTbody">
-                    <tr><td colspan="7" class="text-center py-4">載入中...</td></tr>
+                    <tr><td colspan="7" class="text-center py-4">載入中...<\/tr>
                 </tbody>
             </table>
         </div>
@@ -81,11 +114,13 @@
 
     <!-- 退貨歷史 -->
     <div id="returnPanel" class="bg-white rounded shadow p-4 hidden">
-        <div class="flex flex-wrap gap-3 items-end mb-3">
+        <div class="flex flex-wrap gap-3 items-end mb-3 date-group">
             <div><label class="block text-sm">起始日期</label><input type="date" id="returnStart" class="border p-2 rounded"></div>
             <div><label class="block text-sm">結束日期</label><input type="date" id="returnEnd" class="border p-2 rounded"></div>
-            <button id="searchReturnBtn" class="bg-green-600 text-white px-4 py-2 rounded">查詢</button>
-            <button id="refreshReturnBtn" class="bg-gray-500 text-white px-4 py-2 rounded">重新整理</button>
+            <div class="action-buttons flex gap-2">
+                <button id="searchReturnBtn" class="bg-green-600 text-white px-4 py-2 rounded">查詢</button>
+                <button id="refreshReturnBtn" class="bg-gray-500 text-white px-4 py-2 rounded">重新整理</button>
+            </div>
         </div>
         <div class="overflow-x-auto">
             <table class="history-table min-w-full text-sm">
@@ -95,7 +130,7 @@
                     </tr>
                 </thead>
                 <tbody id="returnTbody">
-                    <tr><td colspan="7" class="text-center py-4">載入中...</td></tr>
+                    <tr><td colspan="7" class="text-center py-4">載入中...<\/tr>
                 </tbody>
             </table>
         </div>
@@ -167,18 +202,18 @@
             inboundTotal = data.total;
             const tbody = document.getElementById('inboundTbody');
             if (!data.data.length) {
-                tbody.innerHTML = '<tr><td colspan="7" class="text-center">無資料</td></tr>';
+                tbody.innerHTML = '<table><td colspan="7" class="text-center">無資料</tbody>';
             } else {
                 tbody.innerHTML = data.data.map(item => `
                     <tr>
-                        <td class="p-2">${new Date(item.created_at).toLocaleString()}</td>
-                        <td class="p-2">${escapeHtml(item.doc_number)}</td>
-                        <td class="p-2">${escapeHtml(item.material_code)}</td>
-                        <td class="p-2">${escapeHtml(item.name)}</td>
-                        <td class="p-2">${escapeHtml(item.spec)}</td>
-                        <td class="p-2 text-right">${item.qty}</td>
-                        <td class="p-2">${escapeHtml(item.operator)}</td>
-                    </tr>
+                        <td class="p-2">${new Date(item.created_at).toLocaleString()}<\/td>
+                        <td class="p-2">${escapeHtml(item.doc_number)}<\/td>
+                        <td class="p-2">${escapeHtml(item.material_code)}<\/td>
+                        <td class="p-2">${escapeHtml(item.name)}<\/td>
+                        <td class="p-2">${escapeHtml(item.spec)}<\/td>
+                        <td class="p-2 text-right">${item.qty}<\/td>
+                        <td class="p-2">${escapeHtml(item.operator)}<\/td>
+                     <\/tr>
                 `).join('');
             }
             renderPagination('inbound', inboundPage, inboundTotal, inboundLimit);
@@ -197,18 +232,18 @@
             outboundTotal = data.total;
             const tbody = document.getElementById('outboundTbody');
             if (!data.data.length) {
-                tbody.innerHTML = '<tr><td colspan="7" class="text-center">無資料</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center">無資料</tbody>';
             } else {
                 tbody.innerHTML = data.data.map(item => `
                     <tr>
-                        <td class="p-2">${new Date(item.created_at).toLocaleString()}</td>
-                        <td class="p-2">${escapeHtml(item.doc_number)}</td>
-                        <td class="p-2">${escapeHtml(item.material_code)}</td>
-                        <td class="p-2">${escapeHtml(item.name)}</td>
-                        <td class="p-2">${escapeHtml(item.spec)}</td>
-                        <td class="p-2 text-right">${item.qty}</td>
-                        <td class="p-2">${escapeHtml(item.operator)}</td>
-                    </tr>
+                        <td class="p-2">${new Date(item.created_at).toLocaleString()}<\/td>
+                        <td class="p-2">${escapeHtml(item.doc_number)}<\/td>
+                        <td class="p-2">${escapeHtml(item.material_code)}<\/td>
+                        <td class="p-2">${escapeHtml(item.name)}<\/td>
+                        <td class="p-2">${escapeHtml(item.spec)}<\/td>
+                        <td class="p-2 text-right">${item.qty}<\/td>
+                        <td class="p-2">${escapeHtml(item.operator)}<\/td>
+                     <\/tr>
                 `).join('');
             }
             renderPagination('outbound', outboundPage, outboundTotal, outboundLimit);
@@ -227,18 +262,18 @@
             returnTotal = data.total;
             const tbody = document.getElementById('returnTbody');
             if (!data.data.length) {
-                tbody.innerHTML = '<tr><td colspan="7" class="text-center">無資料</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center">無資料</tbody>';
             } else {
                 tbody.innerHTML = data.data.map(item => `
                     <tr>
-                        <td class="p-2">${new Date(item.created_at).toLocaleString()}</td>
-                        <td class="p-2">${escapeHtml(item.doc_number)}</td>
-                        <td class="p-2">${escapeHtml(item.material_code)}</td>
-                        <td class="p-2">${escapeHtml(item.name)}</td>
-                        <td class="p-2">${escapeHtml(item.spec)}</td>
-                        <td class="p-2 text-right">${item.qty}</td>
-                        <td class="p-2">${escapeHtml(item.operator)}</td>
-                    </tr>
+                        <td class="p-2">${new Date(item.created_at).toLocaleString()}<\/td>
+                        <td class="p-2">${escapeHtml(item.doc_number)}<\/td>
+                        <td class="p-2">${escapeHtml(item.material_code)}<\/td>
+                        <td class="p-2">${escapeHtml(item.name)}<\/td>
+                        <td class="p-2">${escapeHtml(item.spec)}<\/td>
+                        <td class="p-2 text-right">${item.qty}<\/td>
+                        <td class="p-2">${escapeHtml(item.operator)}<\/td>
+                     <\/tr>
                 `).join('');
             }
             renderPagination('return', returnPage, returnTotal, returnLimit);

@@ -2,10 +2,10 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
     <title>智慧庫存查詢系統</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* 统一样式：表格边框和固定布局 */
         .data-table {
             table-layout: fixed;
             width: 100%;
@@ -22,20 +22,38 @@
             background-color: #f9fafb;
             font-weight: 600;
         }
-        /* 依倉別查詢表列宽（5列） */
-        .warehouse-table th:nth-child(1) { width: 20%; }  /* 單據編號 */
-        .warehouse-table th:nth-child(2) { width: 15%; }  /* 料號 */
-        .warehouse-table th:nth-child(3) { width: 20%; }  /* 品名 */
-        .warehouse-table th:nth-child(4) { width: 20%; }  /* 規格 */
-        .warehouse-table th:nth-child(5) { width: 10%; }  /* 數量 */
-        /* 依單據查詢表列宽（4列） */
-        .document-table th:nth-child(1) { width: 20%; }  /* 料號 */
-        .document-table th:nth-child(2) { width: 25%; }  /* 品名 */
-        .document-table th:nth-child(3) { width: 25%; }  /* 規格 */
-        .document-table th:nth-child(4) { width: 30%; }  /* 倉別 */
-        /* 依料號查詢表列宽（2列） */
-        .material-table th:nth-child(1) { width: 40%; }  /* 倉庫 */
-        .material-table th:nth-child(2) { width: 30%; }  /* 數量 */
+        .warehouse-table th:nth-child(1) { width: 20%; }
+        .warehouse-table th:nth-child(2) { width: 15%; }
+        .warehouse-table th:nth-child(3) { width: 20%; }
+        .warehouse-table th:nth-child(4) { width: 20%; }
+        .warehouse-table th:nth-child(5) { width: 10%; }
+        .document-table th:nth-child(1) { width: 20%; }
+        .document-table th:nth-child(2) { width: 25%; }
+        .document-table th:nth-child(3) { width: 25%; }
+        .document-table th:nth-child(4) { width: 30%; }
+        .material-table th:nth-child(1) { width: 40%; }
+        .material-table th:nth-child(2) { width: 30%; }
+        /* 手機優化 */
+        @media (max-width: 640px) {
+            .tab-buttons {
+                flex-wrap: wrap;
+                gap: 0.5rem;
+            }
+            .query-area {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+            .query-area > div {
+                width: 100%;
+            }
+            .query-area button {
+                width: 100%;
+            }
+            .data-table th, .data-table td {
+                font-size: 0.7rem;
+                padding: 0.3rem;
+            }
+        }
     </style>
 </head>
 <body class="bg-gray-100 p-6">
@@ -47,7 +65,7 @@
         </div>
     </div>
 
-    <div class="flex flex-wrap gap-2 mb-4 border-b pb-2">
+    <div class="flex flex-wrap gap-2 mb-4 border-b pb-2 tab-buttons">
         <button id="tabWarehouseBtn" class="px-4 py-2 bg-blue-600 text-white rounded">🏚️ 依倉別查詢</button>
         <button id="TabDocumentBtn" class="px-4 py-2 bg-gray-500 text-white rounded">📄 依單據查詢</button>
         <button id="TabMaterialBtn" class="px-4 py-2 bg-gray-500 text-white rounded">🔍 依料號查詢</button>
@@ -55,76 +73,25 @@
 
     <!-- 依倉別查詢 -->
     <div id="warehousePanel" class="bg-white rounded shadow p-4">
-        <div class="flex flex-wrap gap-3 items-end">
-            <div class="flex-1">
-                <label class="block text-sm font-medium">選擇倉庫</label>
-                <select id="warehouseSelect" class="border p-2 rounded w-full">
-                    <option value="">-- 請選擇 --</option>
-                </select>
-            </div>
-            <div class="flex-1">
-                <label class="block text-sm font-medium">關鍵字 (料號/品名)</label>
-                <input type="text" id="warehouseSearch" placeholder="輸入關鍵字" class="border p-2 rounded w-full">
-            </div>
+        <div class="flex flex-wrap gap-3 items-end query-area">
+            <div class="flex-1"><label class="block text-sm font-medium">選擇倉庫</label><select id="warehouseSelect" class="border p-2 rounded w-full"><option value="">-- 請選擇 --</option></select></div>
+            <div class="flex-1"><label class="block text-sm font-medium">關鍵字 (料號/品名)</label><input type="text" id="warehouseSearch" placeholder="輸入關鍵字" class="border p-2 rounded w-full"></div>
             <button id="searchWarehouseBtn" class="bg-green-600 text-white px-4 py-2 rounded">查詢</button>
         </div>
-        <div id="warehouseResult" class="mt-4 overflow-x-auto">
-            <table class="data-table warehouse-table">
-                <thead class="bg-gray-50">
-                    <tr><th>單據編號</th><th>料號</th><th>品名</th><th>規格</th><th>數量</th></tr>
-                </thead>
-                <tbody id="warehouseTbody">
-                    <tr><td colspan="5" class="text-center py-4">請選擇倉庫並查詢</td></tr>
-                </tbody>
-            </table>
-        </div>
+        <div id="warehouseResult" class="mt-4 overflow-x-auto"><table class="data-table warehouse-table"><thead class="bg-gray-50"><tr><th>單據編號</th><th>料號</th><th>品名</th><th>規格</th><th>數量</th></tr></thead><tbody id="warehouseTbody"><tr><td colspan="5" class="text-center py-4">請選擇倉庫並查詢</td></tr></tbody></table></div>
         <div id="warehousePagination" class="flex justify-between items-center mt-3"></div>
     </div>
 
     <!-- 依單據查詢 -->
     <div id="documentPanel" class="bg-white rounded shadow p-4 hidden">
-        <div class="flex gap-2 items-end">
-            <div class="flex-1">
-                <label class="block text-sm font-medium">選擇未完成單據</label>
-                <select id="docSelect" class="border p-2 rounded w-full">
-                    <option value="">-- 請選擇 --</option>
-                </select>
-            </div>
-            <button id="searchDocBtn" class="bg-green-600 text-white px-4 py-2 rounded">查詢</button>
-        </div>
-        <div id="docResult" class="mt-4">
-            <div id="docInfo" class="bg-gray-50 p-2 text-sm mb-2"></div>
-            <div class="overflow-x-auto">
-                <table class="data-table document-table">
-                    <thead class="bg-gray-50">
-                        <tr><th>料號</th><th>品名</th><th>規格</th><th>倉別</th></tr>
-                    </thead>
-                    <tbody id="docTbody"></tbody>
-                </table>
-            </div>
-        </div>
+        <div class="flex gap-2 items-end"><div class="flex-1"><label class="block text-sm font-medium">選擇未完成單據</label><select id="docSelect" class="border p-2 rounded w-full"><option value="">-- 請選擇 --</option></select></div><button id="searchDocBtn" class="bg-green-600 text-white px-4 py-2 rounded">查詢</button></div>
+        <div id="docResult" class="mt-4"><div id="docInfo" class="bg-gray-50 p-2 text-sm mb-2"></div><div class="overflow-x-auto"><table class="data-table document-table"><thead class="bg-gray-50"><tr><th>料號</th><th>品名</th><th>規格</th><th>倉別</th></tr></thead><tbody id="docTbody"></tbody></table></div></div>
     </div>
 
     <!-- 依料號查詢 -->
     <div id="materialPanel" class="bg-white rounded shadow p-4 hidden">
-        <div class="flex gap-2 items-end">
-            <div class="flex-1">
-                <label class="block text-sm font-medium">料號</label>
-                <input type="text" id="materialCode" placeholder="請輸入料號" class="border p-2 rounded w-full">
-            </div>
-            <button id="searchMaterialBtn" class="bg-green-600 text-white px-4 py-2 rounded">查詢</button>
-        </div>
-        <div id="materialResult" class="mt-4">
-            <div id="materialInfo" class="bg-gray-50 p-2 text-sm mb-2"></div>
-            <div class="overflow-x-auto">
-                <table class="data-table material-table">
-                    <thead class="bg-gray-50">
-                        <tr><th>倉庫</th><th>數量</th></tr>
-                    </thead>
-                    <tbody id="materialTbody"></tbody>
-                </table>
-            </div>
-        </div>
+        <div class="flex gap-2 items-end"><div class="flex-1"><label class="block text-sm font-medium">料號</label><input type="text" id="materialCode" placeholder="請輸入料號" class="border p-2 rounded w-full"></div><button id="searchMaterialBtn" class="bg-green-600 text-white px-4 py-2 rounded">查詢</button></div>
+        <div id="materialResult" class="mt-4"><div id="materialInfo" class="bg-gray-50 p-2 text-sm mb-2"></div><div class="overflow-x-auto"><table class="data-table material-table"><thead class="bg-gray-50"><tr><th>倉庫</th><th>數量</th></tr></thead><tbody id="materialTbody"></tbody></table></div></div>
     </div>
 </div>
 
@@ -149,7 +116,6 @@
 
     function escapeHtml(s) { if (!s) return ''; return s.replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m])); }
 
-    // 繁體映射表
     const tradMap = {
         "待验仓": "待驗倉", "不良品仓": "不良品倉", "待入库仓": "待入庫倉", "待出库仓": "待出庫倉",
         "包装仓": "包裝倉", "包装成品仓": "包裝成品倉", "待出货仓": "待出貨倉",
@@ -159,7 +125,6 @@
     };
     function toTraditional(str) { return tradMap[str] || str; }
 
-    // 載入倉庫下拉選單
     async function loadWarehouses() {
         try {
             const warehouses = await apiFetch(`${API_BASE}/inventory/warehouses`);
@@ -174,7 +139,6 @@
         } catch(e) { console.error(e); alert('載入倉庫失敗'); }
     }
 
-    // 載入未完成單據下拉選單
     async function loadPendingDocuments() {
         try {
             const docs = await apiFetch(`${API_BASE}/inventory/pending-documents`);
@@ -189,7 +153,6 @@
         } catch(e) { console.error(e); alert('載入單據失敗'); }
     }
 
-    // 依倉別查詢
     async function searchWarehouse(resetPage = true) {
         if (resetPage) currentWarehousePage = 0;
         const warehouse = document.getElementById('warehouseSelect').value;
@@ -205,16 +168,16 @@
             warehouseTotal = data.total;
             const tbody = document.getElementById('warehouseTbody');
             if (!data.data.length) {
-                tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4">無資料</td></tr>';
+                tbody.innerHTML = '<td><td colspan="5" class="text-center py-4">無資料</tbody>';
             } else {
                 tbody.innerHTML = data.data.map(item => `
-                    <tr class="border-b">
-                        <td class="p-2">${escapeHtml(item.doc_number)}</td>
-                        <td class="p-2">${escapeHtml(item.material_code)}</td>
-                        <td class="p-2">${escapeHtml(item.name)}</td>
-                        <td class="p-2">${escapeHtml(item.spec)}</td>
-                        <td class="p-2 text-right">${item.qty}</td>
-                    </tr>
+                    <tr>
+                        <td class="p-2">${escapeHtml(item.doc_number)}<\/td>
+                        <td class="p-2">${escapeHtml(item.material_code)}<\/td>
+                        <td class="p-2">${escapeHtml(item.name)}<\/td>
+                        <td class="p-2">${escapeHtml(item.spec)}<\/td>
+                        <td class="p-2 text-right">${item.qty}<\/td>
+                    <\/tr>
                 `).join('');
             }
             const totalPages = Math.ceil(warehouseTotal / warehouseLimit);
@@ -231,7 +194,6 @@
         } catch(e) { alert('查詢失敗: ' + e.message); }
     }
 
-    // 依單據查詢（改良版：若 distribution 為空，自動從料號庫存補齊倉別）
     async function searchDocument() {
         const docNumber = document.getElementById('docSelect').value;
         if (!docNumber) { alert('請選擇單據'); return; }
@@ -241,17 +203,11 @@
             document.getElementById('docInfo').innerHTML = `<strong>${data.doc_number}</strong> (${data.doc_type === 'purchase' ? '採購單' : '製令單'}) - 狀態：${escapeHtml(statusTW)}`;
             const tbody = document.getElementById('docTbody');
             if (!data.items.length) {
-                tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4">無明細</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4">無明細</tbody>';
                 return;
             }
-
-            // 為了補齊倉別，可能需要依料號查詢庫存（併發請求）
-            // 先建立一個料號 -> 倉別列表的 Map
-            const materialWarehouseMap = new Map(); // key: 料號, value: 倉別名稱陣列
-
-            // 收集所有料號
+            const materialWarehouseMap = new Map();
             const materialCodes = data.items.map(item => item.material_code);
-            // 對每個料號呼叫 by-material API（可考慮批次，但這裡簡單併發）
             const fetchPromises = materialCodes.map(async (code) => {
                 try {
                     const stockData = await apiFetch(`${API_BASE}/inventory/by-material/${encodeURIComponent(code)}`);
@@ -259,37 +215,30 @@
                         const warehouses = stockData.distribution.map(d => toTraditional(d.warehouse));
                         materialWarehouseMap.set(code, warehouses);
                     }
-                } catch(e) {
-                    console.warn(`無法取得料號 ${code} 的庫存分佈`, e);
-                }
+                } catch(e) { console.warn(`無法取得料號 ${code} 的庫存分佈`, e); }
             });
             await Promise.all(fetchPromises);
-
-            // 渲染表格
             tbody.innerHTML = data.items.map(item => {
                 let warehousesHtml = '';
-                // 優先使用原 distribution
                 if (item.distribution && item.distribution.length) {
                     const whNames = item.distribution.map(d => toTraditional(d.warehouse));
                     warehousesHtml = whNames.join('、');
                 } else {
-                    // 若原 distribution 為空，則從剛才查到的 Map 中取得
                     const whNames = materialWarehouseMap.get(item.material_code) || [];
                     warehousesHtml = whNames.length ? whNames.join('、') : '－';
                 }
                 return `
-                    <tr class="border-b">
-                        <td class="p-2">${escapeHtml(item.material_code)}</td>
-                        <td class="p-2">${escapeHtml(item.material_name)}</td>
-                        <td class="p-2">${escapeHtml(item.spec)}</td>
-                        <td class="p-2">${escapeHtml(warehousesHtml)}</td>
-                    </tr>
+                    <tr>
+                        <td class="p-2">${escapeHtml(item.material_code)}<\/td>
+                        <td class="p-2">${escapeHtml(item.material_name)}<\/td>
+                        <td class="p-2">${escapeHtml(item.spec)}<\/td>
+                        <td class="p-2">${escapeHtml(warehousesHtml)}<\/td>
+                    <\/tr>
                 `;
             }).join('');
         } catch(e) { alert('查詢失敗: ' + e.message); }
     }
 
-    // 依料號查詢
     async function searchMaterial() {
         const materialCode = document.getElementById('materialCode').value.trim();
         if (!materialCode) { alert('請輸入料號'); return; }
@@ -298,19 +247,18 @@
             document.getElementById('materialInfo').innerHTML = `<strong>${escapeHtml(data.material_code)}</strong> - ${escapeHtml(data.name)} (${escapeHtml(data.spec)})`;
             const tbody = document.getElementById('materialTbody');
             if (!data.distribution.length) {
-                tbody.innerHTML = '<tr><td colspan="2" class="text-center py-4">無分佈資料</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="2" class="text-center py-4">無分佈資料</tbody>';
             } else {
                 tbody.innerHTML = data.distribution.map(d => `
-                    <tr class="border-b">
-                        <td class="p-2">${escapeHtml(toTraditional(d.warehouse))}</td>
-                        <td class="p-2 text-right">${d.qty}</td>
-                    </tr>
+                    <tr>
+                        <td class="p-2">${escapeHtml(toTraditional(d.warehouse))}<\/td>
+                        <td class="p-2 text-right">${d.qty}<\/td>
+                    <\/tr>
                 `).join('');
             }
         } catch(e) { alert('查詢失敗: ' + e.message); }
     }
 
-    // 頁籤切換
     function showPanel(panel) {
         document.getElementById('warehousePanel').style.display = panel === 'warehouse' ? 'block' : 'none';
         document.getElementById('documentPanel').style.display = panel === 'document' ? 'block' : 'none';
