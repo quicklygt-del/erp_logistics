@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
     <title>指揮塔 - 任務監控</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -25,125 +25,162 @@
             background-color: #f9fafb;
             font-weight: 600;
         }
-        .worker-table th:nth-child(1) { width: 25%; }
-        .worker-table th:nth-child(2) { width: 10%; }
-        .worker-table th:nth-child(3) { width: 10%; }
-        .worker-table th:nth-child(4) { width: 10%; }
-        .worker-table th:nth-child(5) { width: 10%; }
-        .worker-table th:nth-child(6) { width: 15%; }
-        .stock-table th:nth-child(1) { width: 15%; }
-        .stock-table th:nth-child(2) { width: 25%; }
-        .stock-table th:nth-child(3) { width: 15%; }
-        .stock-table th:nth-child(4) { width: 15%; }
-        .stock-table th:nth-child(5) { width: 20%; }
-        .timeout-table th:nth-child(1) { width: 40%; }
-        .timeout-table th:nth-child(2) { width: 30%; }
-        .timeout-table th:nth-child(3) { width: 20%; }
+        /* 手机优化 */
+        @media (max-width: 640px) {
+            .task-card { padding: 0.75rem; }
+            .task-icon { font-size: 1.8rem; }
+            .task-title { font-size: 1rem; }
+            .task-count { font-size: 1.5rem; }
+            .worker-card { padding: 0.75rem; }
+            .alert-section { margin-top: 1rem; }
+            .btn-mobile { padding: 0.6rem 1rem; font-size: 0.9rem; }
+            .stat-label { font-size: 0.75rem; }
+        }
+        .menu-panel {
+            position: fixed;
+            top: 0;
+            right: -280px;
+            width: 280px;
+            height: 100%;
+            background: white;
+            box-shadow: -2px 0 12px rgba(0,0,0,0.15);
+            z-index: 50;
+            transition: right 0.3s ease;
+            padding-top: 70px;
+        }
+        .menu-panel.open { right: 0; }
+        .menu-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            z-index: 40;
+            display: none;
+        }
+        .menu-overlay.show { display: block; }
+        .floating-refresh {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background-color: #3b82f6;
+            color: white;
+            border-radius: 9999px;
+            padding: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            z-index: 30;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .floating-refresh:active { transform: scale(0.95); }
     </style>
 </head>
-<body class="bg-gray-100 p-6">
+<body class="bg-gray-100 p-4">
+<!-- 側邊選單遮罩 -->
+<div id="menuOverlay" class="menu-overlay" onclick="closeMenu()"></div>
+<!-- 側邊選單 -->
+<div id="menuPanel" class="menu-panel">
+    <div class="px-4 py-2 border-b"><h3 class="text-lg font-bold">功能選單</h3></div>
+    <div class="flex flex-col">
+        <a href="materials_dashboard.html" class="block px-4 py-3 hover:bg-gray-100 border-b">📦 物料主檔</a>
+        <a href="stock_query.html" class="block px-4 py-3 hover:bg-gray-100 border-b">📊 庫存查詢</a>
+        <a href="history.html" class="block px-4 py-3 hover:bg-gray-100 border-b">📜 歷史紀錄</a>
+        <a href="reprint_qr.html" class="block px-4 py-3 hover:bg-gray-100 border-b">🖨️ QR列印</a>
+        <button onclick="logout()" class="text-left px-4 py-3 hover:bg-gray-100 border-b text-red-600">🔓 登出</button>
+    </div>
+</div>
+
 <div class="max-w-7xl mx-auto">
-    <div class="flex justify-between items-center mb-6">
-        <h1 class="text-3xl font-bold">🏭 指揮塔</h1>
-        <div class="space-x-2">
-            <a href="materials_dashboard.html" class="bg-blue-500 text-white px-3 py-1 rounded text-sm">📦 物料主檔</a>
-            <a href="stock_query.html" class="bg-blue-500 text-white px-3 py-1 rounded text-sm">🔍 庫存查詢</a>
-            <a href="history.html" class="bg-blue-500 text-white px-3 py-1 rounded text-sm">📜 歷史紀錄</a>
-            <a href="reprint_qr.html" class="bg-blue-500 text-white px-3 py-1 rounded text-sm">🖨️ QR列印</a>
-            <button onclick="logout()" class="bg-red-500 text-white px-3 py-1 rounded text-sm">登出</button>
-        </div>
+    <div class="flex justify-between items-center mb-4">
+        <h1 class="text-2xl font-bold">🏭 指揮塔</h1>
+        <button id="menuBtn" class="bg-gray-200 p-2 rounded-full w-12 h-12 flex items-center justify-center text-xl">☰</button>
     </div>
-    <p class="text-gray-600 mb-6">任務監控與派工看板</p>
-    <div id="statusBanner" class="hidden mb-4 p-3 rounded text-sm"></div>
 
-    <!-- 三任務卡片 -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div class="bg-white rounded-xl shadow p-5 card-hover cursor-pointer" onclick="location.href='inbound_manage.html'">
-            <div class="flex items-center justify-between">
-                <h2 class="text-xl font-bold text-blue-600">📥 入庫任務</h2>
-                <span id="inboundCount" class="text-3xl font-bold text-gray-700">-</span>
+    <!-- 三任務卡片（垂直排列） -->
+    <div class="grid grid-cols-1 gap-4 mb-6">
+        <div class="bg-white rounded-xl shadow p-4 card-hover cursor-pointer flex justify-between items-center" onclick="location.href='inbound_manage.html'">
+            <div class="flex items-center gap-3">
+                <div class="text-3xl">📥</div>
+                <div>
+                    <h2 class="text-lg font-bold text-blue-600">入庫任務</h2>
+                    <p class="text-gray-500 text-sm">待指派/進行中</p>
+                </div>
             </div>
-            <p class="text-gray-500 mt-2">待指派/進行中</p>
-            <div class="mt-3 text-sm text-gray-400">點擊進入派工</div>
+            <span id="inboundCount" class="text-2xl font-bold text-gray-700">-</span>
         </div>
-        <div class="bg-white rounded-xl shadow p-5 card-hover cursor-pointer" onclick="location.href='pick_management.html'">
-            <div class="flex items-center justify-between">
-                <h2 class="text-xl font-bold text-green-600">📦 檢貨任務</h2>
-                <span id="pickingCount" class="text-3xl font-bold text-gray-700">-</span>
+        <div class="bg-white rounded-xl shadow p-4 card-hover cursor-pointer flex justify-between items-center" onclick="location.href='pick_management.html'">
+            <div class="flex items-center gap-3">
+                <div class="text-3xl">📦</div>
+                <div>
+                    <h2 class="text-lg font-bold text-green-600">檢貨任務</h2>
+                    <p class="text-gray-500 text-sm">待指派/進行中</p>
+                </div>
             </div>
-            <p class="text-gray-500 mt-2">待指派/進行中</p>
-            <div class="mt-3 text-sm text-gray-400">點擊進入派工</div>
+            <span id="pickingCount" class="text-2xl font-bold text-gray-700">-</span>
         </div>
-        <div class="bg-white rounded-xl shadow p-5 card-hover cursor-pointer" onclick="location.href='manage_tasks.html'">
-            <div class="flex items-center justify-between">
-                <h2 class="text-xl font-bold text-purple-600">📋 盤點任務</h2>
-                <span id="stocktakeCount" class="text-3xl font-bold text-gray-700">-</span>
+        <div class="bg-white rounded-xl shadow p-4 card-hover cursor-pointer flex justify-between items-center" onclick="location.href='manage_tasks.html'">
+            <div class="flex items-center gap-3">
+                <div class="text-3xl">📋</div>
+                <div>
+                    <h2 class="text-lg font-bold text-purple-600">盤點任務</h2>
+                    <p class="text-gray-500 text-sm">待指派/進行中</p>
+                </div>
             </div>
-            <p class="text-gray-500 mt-2">待指派/進行中</p>
-            <div class="mt-3 text-sm text-gray-400">點擊進入派工</div>
+            <span id="stocktakeCount" class="text-2xl font-bold text-gray-700">-</span>
         </div>
     </div>
 
-    <!-- 倉管員當前負載表 -->
-    <div class="bg-white rounded-xl shadow p-5 mb-8">
-        <h2 class="text-xl font-bold mb-3">👥 倉管員當前負載</h2>
-        <div class="overflow-x-auto">
-            <table class="data-table worker-table">
-                <thead>
-                    <tr>
-                        <th>倉管員</th>
-                        <th>入庫</th>
-                        <th>檢貨</th>
-                        <th>盤點</th>
-                        <th>合計</th>
-                        <th>操作</th>
-                    </tr>
-                </thead>
-                <tbody id="workerLoadTbody">
-                    <tr><td colspan="6" class="text-center">載入中...<\/tr>
-                </tbody>
-            </table>
+    <!-- 倉管員當前負載（卡片式） -->
+    <div class="bg-white rounded-xl shadow p-4 mb-6">
+        <h2 class="text-lg font-bold mb-3">👥 倉管員當前負載</h2>
+        <div id="workerLoadContainer" class="space-y-3">
+            <div class="text-center py-4 text-gray-500">載入中...</div>
         </div>
     </div>
 
-    <!-- 庫存預警卡片 -->
-    <div class="bg-white rounded-xl shadow p-5 mb-8">
-        <h2 class="text-xl font-bold mb-3">⚠️ 庫存預警 (低於安全庫存)</h2>
-        <div class="overflow-x-auto max-h-64 overflow-y-auto">
-            <table class="data-table stock-table">
-                <thead class="sticky-header">
-                    <tr>
-                        <th>料號</th>
-                        <th>品名</th>
-                        <th>主儲倉庫存</th>
-                        <th>安全庫存</th>
-                        <th>儲位</th>
-                    </tr>
-                </thead>
-                <tbody id="lowStockPreviewTbody">
-                    <tr><td colspan="5" class="text-center">載入中...<\/tr>
-                </tbody>
-            </table>
+    <!-- 庫存預警卡片（預設折疊） -->
+    <div class="bg-white rounded-xl shadow p-4 mb-6">
+        <div class="flex justify-between items-center cursor-pointer" onclick="toggleAlert('stockAlert')">
+            <h2 class="text-lg font-bold">⚠️ 庫存預警 (低於安全庫存)</h2>
+            <span id="stockAlertIcon" class="text-xl">▼</span>
+        </div>
+        <div id="stockAlertContent" class="mt-2 hidden">
+            <div class="overflow-x-auto max-h-64 overflow-y-auto">
+                <table class="data-table stock-table text-sm">
+                    <thead class="sticky-header">
+                        <tr><th>料號</th><th>品名</th><th>主儲倉庫存</th><th>安全庫存</th><th>儲位</th></tr>
+                    </thead>
+                    <tbody id="lowStockPreviewTbody">
+                        <tr><td colspan="5" class="text-center py-4">載入中...</tbody>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 
-    <!-- 停留超時預警卡片 -->
-    <div class="bg-white rounded-xl shadow p-5">
-        <h2 class="text-xl font-bold mb-3">⏰ 停留超時預警</h2>
-        <div class="overflow-x-auto max-h-64 overflow-y-auto">
-            <table class="data-table timeout-table">
-                <thead class="sticky-header">
-                    <tr>
-                        <th>單據/箱號</th>
-                        <th>節點</th>
-                        <th>已停留(小時)</th>
-                    </tr>
-                </thead>
-                <tbody id="timeoutPreviewTbody">
-                    <tr><td colspan="3" class="text-center">載入中...<\/tr>
-                </tbody>
-            </table>
+    <!-- 停留超時預警（預設折疊） -->
+    <div class="bg-white rounded-xl shadow p-4">
+        <div class="flex justify-between items-center cursor-pointer" onclick="toggleAlert('timeoutAlert')">
+            <h2 class="text-lg font-bold">⏰ 停留超時預警</h2>
+            <span id="timeoutAlertIcon" class="text-xl">▼</span>
         </div>
+        <div id="timeoutAlertContent" class="mt-2 hidden">
+            <div class="overflow-x-auto max-h-64 overflow-y-auto">
+                <table class="data-table timeout-table text-sm">
+                    <thead class="sticky-header">
+                        <tr><th>單據/箱號</th><th>節點</th><th>已停留(小時)</th></tr>
+                    </thead>
+                    <tbody id="timeoutPreviewTbody">
+                        <tr><td colspan="3" class="text-center py-4">載入中...</tbody>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 浮動重新整理按鈕 -->
+    <div id="floatingRefresh" class="floating-refresh touch-btn">
+        <i class="fas fa-sync-alt"></i>
     </div>
 </div>
 
@@ -152,17 +189,11 @@
     const ALLOWED_ROLES = ['admin', 'warehouse'];
     let authRedirecting = false;
 
-    function getToken() {
-        return localStorage.getItem('access_token');
-    }
+    function getToken() { return localStorage.getItem('access_token'); }
 
     function checkAccess() {
         const token = getToken();
-        if (!token) {
-            alert('請先登入');
-            location.href = 'login.html';
-            return false;
-        }
+        if (!token) { alert('請先登入'); location.href = 'login.html'; return false; }
         const role = localStorage.getItem('user_role');
         if (role && !ALLOWED_ROLES.includes(role)) {
             alert('此頁面僅限倉儲主管或管理員使用，請重新登入');
@@ -172,132 +203,84 @@
         return true;
     }
 
-    function showBanner(message, type = 'error') {
-        const banner = document.getElementById('statusBanner');
-        banner.className = type === 'error'
-            ? 'mb-4 p-3 rounded text-sm bg-red-100 text-red-800 border border-red-200'
-            : 'mb-4 p-3 rounded text-sm bg-yellow-100 text-yellow-800 border border-yellow-200';
-        banner.textContent = message;
-        banner.classList.remove('hidden');
+    function closeMenu() {
+        document.getElementById('menuPanel').classList.remove('open');
+        document.getElementById('menuOverlay').classList.remove('show');
     }
+    document.getElementById('menuBtn').onclick = () => {
+        document.getElementById('menuPanel').classList.add('open');
+        document.getElementById('menuOverlay').classList.add('show');
+    };
 
-    function hideBanner() {
-        document.getElementById('statusBanner').classList.add('hidden');
-    }
-
-    function parseApiError(text) {
-        try {
-            const j = JSON.parse(text);
-            return j.detail || text;
-        } catch {
-            return text || '未知錯誤';
+    function toggleAlert(type) {
+        const content = document.getElementById(`${type}Content`);
+        const icon = document.getElementById(`${type}Icon`);
+        if (content.classList.contains('hidden')) {
+            content.classList.remove('hidden');
+            icon.innerHTML = '▲';
+        } else {
+            content.classList.add('hidden');
+            icon.innerHTML = '▼';
         }
     }
+
+    function escapeHtml(s) { if (s == null) return ''; return String(s).replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m])); }
 
     async function apiFetch(url, opts = {}) {
         const token = getToken();
-        if (!token) {
-            if (!authRedirecting) {
-                authRedirecting = true;
-                alert('請先登入');
-                localStorage.removeItem('access_token');
-                location.href = 'login.html';
-            }
-            throw new Error('Unauthorized');
-        }
-        opts.headers = {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-            ...(opts.headers || {})
-        };
-        let res;
-        try {
-            res = await fetch(url, opts);
-        } catch (e) {
-            const err = new Error('無法連線至 API 伺服器，請確認 uvicorn 已啟動');
-            err.code = 'NETWORK';
-            throw err;
-        }
-        if (res.status === 401) {
-            if (!authRedirecting) {
-                authRedirecting = true;
-                alert('登入已過期，請重新登入');
-                localStorage.removeItem('access_token');
-                location.href = 'login.html';
-            }
-            throw new Error('Unauthorized');
-        }
-        if (res.status === 403) {
-            const err = new Error(parseApiError(await res.text()));
-            err.code = 403;
-            throw err;
-        }
-        if (!res.ok) {
-            const err = new Error(parseApiError(await res.text()));
-            err.code = res.status;
-            throw err;
-        }
+        if (!token) { if (!authRedirecting) { authRedirecting = true; alert('請先登入'); localStorage.removeItem('access_token'); location.href = 'login.html'; } throw new Error('Unauthorized'); }
+        opts.headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, ...(opts.headers || {}) };
+        const res = await fetch(url, opts);
+        if (res.status === 401) { if (!authRedirecting) { authRedirecting = true; alert('登入過期，請重新登入'); localStorage.removeItem('access_token'); location.href = 'login.html'; } throw new Error('Unauthorized'); }
+        if (res.status === 403) throw new Error(await res.text());
+        if (!res.ok) throw new Error(await res.text());
         return res.json();
     }
 
-    function escapeHtml(s) {
-        if (s == null) return '';
-        return String(s).replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m]));
-    }
-
-    async function loadSummary(silent = false) {
+    async function loadSummary() {
         try {
             const data = await apiFetch(`${API_BASE}/dashboard/task-summary`);
-            hideBanner();
             document.getElementById('inboundCount').innerText = data.inbound_pending || 0;
             document.getElementById('pickingCount').innerText = data.picking_pending || 0;
             document.getElementById('stocktakeCount').innerText = data.stocktake_pending || 0;
-            const tbody = document.getElementById('workerLoadTbody');
+            const container = document.getElementById('workerLoadContainer');
             if (!data.worker_load || data.worker_load.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4">暫無指派任務</td></tr>';
+                container.innerHTML = '<div class="text-center py-4 text-gray-500">暫無指派任務</div>';
                 return;
             }
-            tbody.innerHTML = data.worker_load.map(w => `
-                <tr>
-                    <td class="p-2">${escapeHtml(w.assigned_to)}</td>
-                    <td class="p-2 text-center">${w.inbound_count || 0}</td>
-                    <td class="p-2 text-center">${w.picking_count || 0}</td>
-                    <td class="p-2 text-center">${w.stocktake_count || 0}</td>
-                    <td class="p-2 text-center">${w.task_count || 0}</td>
-                    <td class="p-2 text-center"><button class="view-tasks bg-blue-500 text-white px-2 py-1 rounded text-xs" data-worker="${escapeHtml(w.assigned_to)}">查看任務</button></td>
-                </tr>
+            container.innerHTML = data.worker_load.map(w => `
+                <div class="worker-card bg-gray-50 rounded-lg p-3 border">
+                    <div class="flex justify-between items-center">
+                        <span class="font-bold text-md">${escapeHtml(w.assigned_to)}</span>
+                        <span class="text-sm">合計: ${w.task_count} 件</span>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2 mt-2 text-center text-sm">
+                        <div><span class="text-blue-600">📥</span> 入庫 ${w.inbound_count}</div>
+                        <div><span class="text-green-600">📦</span> 檢貨 ${w.picking_count}</div>
+                        <div><span class="text-purple-600">📋</span> 盤點 ${w.stocktake_count}</div>
+                    </div>
+                    <button class="view-tasks bg-blue-500 text-white px-3 py-1 rounded text-xs mt-2 w-full touch-btn" data-worker="${escapeHtml(w.assigned_to)}">查看任務</button>
+                </div>
             `).join('');
-            // ========== 修改點：點擊按鈕時跳轉到 worker_dashboard.html 並帶上使用者名稱 ==========
             document.querySelectorAll('.view-tasks').forEach(btn => {
                 btn.onclick = () => {
                     const workerName = btn.dataset.worker;
-                    // 新分頁開啟 worker_dashboard.html，帶 ?user=參數
                     window.open(`/worker_dashboard.html?user=${encodeURIComponent(workerName)}`, '_blank');
                 };
             });
-        } catch (e) {
-            console.error(e);
-            if (e.message === 'Unauthorized') return;
-            const msg = e.code === 403
-                ? '權限不足：請使用倉儲主管 (warehouse) 或管理員 (admin) 帳號登入'
-                : (e.code === 'NETWORK' ? e.message : `載入任務摘要失敗：${e.message}`);
-            showBanner(msg);
-            if (!silent) alert(msg);
-        }
+        } catch(e) { console.error(e); alert('載入任務摘要失敗: ' + e.message); }
     }
 
     async function loadAlerts() {
-        const role = localStorage.getItem('user_role');
-        if (role && !ALLOWED_ROLES.includes(role)) return;
         try {
             const data = await apiFetch(`${API_BASE}/admin/dashboard/overview`);
             const lowStock = data.low_stock_items ? data.low_stock_items.slice(0, 5) : [];
             const lowStockTbody = document.getElementById('lowStockPreviewTbody');
             if (lowStock.length === 0) {
-                lowStockTbody.innerHTML = '<tr><td colspan="5" class="text-center py-4">✅ 暫無低於安全庫存物料</td></tr>';
+                lowStockTbody.innerHTML = '</td><td colspan="5" class="text-center py-4">✅ 暫無低於安全庫存物料</tbody>';
             } else {
                 lowStockTbody.innerHTML = lowStock.map(item => `
-                    <tr>
+                    <table>
                         <td class="p-2">${escapeHtml(item.material_code)}</td>
                         <td class="p-2">${escapeHtml(item.name)}</td>
                         <td class="p-2 text-center">${item.main_stock}</td>
@@ -309,7 +292,7 @@
             const timeout = data.timeout_alerts ? data.timeout_alerts.slice(0, 5) : [];
             const timeoutTbody = document.getElementById('timeoutPreviewTbody');
             if (timeout.length === 0) {
-                timeoutTbody.innerHTML = '<tr><td colspan="3" class="text-center py-4">✅ 暫無超時停留單據</td></tr>';
+                timeoutTbody.innerHTML = '<tr><td colspan="3" class="text-center py-4">✅ 暫無超時停留單據</tbody>';
             } else {
                 timeoutTbody.innerHTML = timeout.map(alert => `
                     <tr>
@@ -319,15 +302,7 @@
                     </tr>
                 `).join('');
             }
-        } catch (e) {
-            console.error('載入預警失敗', e);
-            if (e.message !== 'Unauthorized') {
-                document.getElementById('lowStockPreviewTbody').innerHTML =
-                    '<tr><td colspan="5" class="text-center py-4 text-gray-400">預警資料載入失敗</td></tr>';
-                document.getElementById('timeoutPreviewTbody').innerHTML =
-                    '<tr><td colspan="3" class="text-center py-4 text-gray-400">預警資料載入失敗</td></tr>';
-            }
-        }
+        } catch(e) { console.error(e); }
     }
 
     function logout() { localStorage.clear(); location.href = 'login.html'; }
@@ -335,7 +310,8 @@
     if (checkAccess()) {
         loadSummary();
         loadAlerts();
-        setInterval(() => { loadSummary(true); loadAlerts(); }, 30000);
+        document.getElementById('floatingRefresh').onclick = () => { loadSummary(); loadAlerts(); };
+        setInterval(() => { loadSummary(); loadAlerts(); }, 30000);
     }
 </script>
 </body>
