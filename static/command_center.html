@@ -21,21 +21,23 @@
             vertical-align: top;
             word-break: break-word;
         }
-        .data-table th {
-            background-color: #f9fafb;
-            font-weight: 600;
-        }
-        /* 手机优化 */
-        @media (max-width: 640px) {
-            .task-card { padding: 0.75rem; }
-            .task-icon { font-size: 1.8rem; }
-            .task-title { font-size: 1rem; }
-            .task-count { font-size: 1.5rem; }
-            .worker-card { padding: 0.75rem; }
-            .alert-section { margin-top: 1rem; }
-            .btn-mobile { padding: 0.6rem 1rem; font-size: 0.9rem; }
-            .stat-label { font-size: 0.75rem; }
-        }
+        .data-table th { background-color: #f9fafb; font-weight: 600; }
+        .worker-table th:nth-child(1) { width: 25%; }
+        .worker-table th:nth-child(2) { width: 10%; }
+        .worker-table th:nth-child(3) { width: 10%; }
+        .worker-table th:nth-child(4) { width: 10%; }
+        .worker-table th:nth-child(5) { width: 10%; }
+        .worker-table th:nth-child(6) { width: 15%; }
+        .stock-table th:nth-child(1) { width: 15%; }
+        .stock-table th:nth-child(2) { width: 25%; }
+        .stock-table th:nth-child(3) { width: 15%; }
+        .stock-table th:nth-child(4) { width: 15%; }
+        .stock-table th:nth-child(5) { width: 20%; }
+        .timeout-table th:nth-child(1) { width: 40%; }
+        .timeout-table th:nth-child(2) { width: 30%; }
+        .timeout-table th:nth-child(3) { width: 20%; }
+
+        /* 側邊選單樣式 */
         .menu-panel {
             position: fixed;
             top: 0;
@@ -73,6 +75,29 @@
             justify-content: center;
         }
         .floating-refresh:active { transform: scale(0.95); }
+
+        /* 手機版覆蓋樣式 */
+        @media (max-width: 640px) {
+            .task-card { padding: 0.75rem; }
+            .task-icon { font-size: 1.8rem; }
+            .task-title { font-size: 1rem; }
+            .task-count { font-size: 1.5rem; }
+            .worker-card { padding: 0.75rem; }
+            .alert-section { margin-top: 1rem; }
+            .btn-mobile { padding: 0.6rem 1rem; font-size: 0.9rem; }
+            .stat-label { font-size: 0.75rem; }
+            /* 電腦版表格隱藏，顯示卡片 */
+            .desktop-table { display: none; }
+            .mobile-card-container { display: block; }
+            /* 任務卡片改為垂直 */
+            .task-grid { grid-template-columns: 1fr !important; }
+        }
+        @media (min-width: 641px) {
+            .desktop-table { display: table; }
+            .mobile-card-container { display: none; }
+            /* 電腦版三任務卡片並排 */
+            .task-grid { grid-template-columns: repeat(3, 1fr) !important; }
+        }
     </style>
 </head>
 <body class="bg-gray-100 p-4">
@@ -96,92 +121,79 @@
         <button id="menuBtn" class="bg-gray-200 p-2 rounded-full w-12 h-12 flex items-center justify-center text-xl">☰</button>
     </div>
 
-    <!-- 三任務卡片（垂直排列） -->
-    <div class="grid grid-cols-1 gap-4 mb-6">
+    <!-- 三任務卡片（電腦版並排，手機版垂直） -->
+    <div class="grid gap-4 mb-6 task-grid" style="grid-template-columns: repeat(3, 1fr);">
         <div class="bg-white rounded-xl shadow p-4 card-hover cursor-pointer flex justify-between items-center" onclick="location.href='inbound_manage.html'">
             <div class="flex items-center gap-3">
                 <div class="text-3xl">📥</div>
-                <div>
-                    <h2 class="text-lg font-bold text-blue-600">入庫任務</h2>
-                    <p class="text-gray-500 text-sm">待指派/進行中</p>
-                </div>
+                <div><h2 class="text-lg font-bold text-blue-600">入庫任務</h2><p class="text-gray-500 text-sm">待指派/進行中</p></div>
             </div>
             <span id="inboundCount" class="text-2xl font-bold text-gray-700">-</span>
         </div>
         <div class="bg-white rounded-xl shadow p-4 card-hover cursor-pointer flex justify-between items-center" onclick="location.href='pick_management.html'">
             <div class="flex items-center gap-3">
                 <div class="text-3xl">📦</div>
-                <div>
-                    <h2 class="text-lg font-bold text-green-600">檢貨任務</h2>
-                    <p class="text-gray-500 text-sm">待指派/進行中</p>
-                </div>
+                <div><h2 class="text-lg font-bold text-green-600">檢貨任務</h2><p class="text-gray-500 text-sm">待指派/進行中</p></div>
             </div>
             <span id="pickingCount" class="text-2xl font-bold text-gray-700">-</span>
         </div>
         <div class="bg-white rounded-xl shadow p-4 card-hover cursor-pointer flex justify-between items-center" onclick="location.href='manage_tasks.html'">
             <div class="flex items-center gap-3">
                 <div class="text-3xl">📋</div>
-                <div>
-                    <h2 class="text-lg font-bold text-purple-600">盤點任務</h2>
-                    <p class="text-gray-500 text-sm">待指派/進行中</p>
-                </div>
+                <div><h2 class="text-lg font-bold text-purple-600">盤點任務</h2><p class="text-gray-500 text-sm">待指派/進行中</p></div>
             </div>
             <span id="stocktakeCount" class="text-2xl font-bold text-gray-700">-</span>
         </div>
     </div>
 
-    <!-- 倉管員當前負載（卡片式） -->
+    <!-- 倉管員當前負載：電腦版表格、手機版卡片 -->
     <div class="bg-white rounded-xl shadow p-4 mb-6">
         <h2 class="text-lg font-bold mb-3">👥 倉管員當前負載</h2>
-        <div id="workerLoadContainer" class="space-y-3">
-            <div class="text-center py-4 text-gray-500">載入中...</div>
+        <!-- 電腦版表格 -->
+        <div class="desktop-table overflow-x-auto">
+            <table class="data-table worker-table">
+                <thead><tr><th>倉管員</th><th>入庫</th><th>檢貨</th><th>盤點</th><th>合計</th><th>操作</th></tr></thead>
+                <tbody id="workerLoadTbody"><tr><td colspan="6" class="text-center py-4">載入中...</td></tr></tbody>
+            </table>
         </div>
+        <!-- 手機版卡片容器 -->
+        <div class="mobile-card-container space-y-3" id="workerLoadContainer"><div class="text-center py-4 text-gray-500">載入中...</div></div>
     </div>
 
-    <!-- 庫存預警卡片（預設折疊） -->
+    <!-- 庫存預警卡片（電腦版預設展開，手機版折疊） -->
     <div class="bg-white rounded-xl shadow p-4 mb-6">
         <div class="flex justify-between items-center cursor-pointer" onclick="toggleAlert('stockAlert')">
             <h2 class="text-lg font-bold">⚠️ 庫存預警 (低於安全庫存)</h2>
             <span id="stockAlertIcon" class="text-xl">▼</span>
         </div>
-        <div id="stockAlertContent" class="mt-2 hidden">
+        <div id="stockAlertContent" class="mt-2">
             <div class="overflow-x-auto max-h-64 overflow-y-auto">
                 <table class="data-table stock-table text-sm">
-                    <thead class="sticky-header">
-                        <tr><th>料號</th><th>品名</th><th>主儲倉庫存</th><th>安全庫存</th><th>儲位</th></tr>
-                    </thead>
-                    <tbody id="lowStockPreviewTbody">
-                        <tr><td colspan="5" class="text-center py-4">載入中...</tbody>
-                    </tbody>
+                    <thead class="sticky-header"><tr><th>料號</th><th>品名</th><th>主儲倉庫存</th><th>安全庫存</th><th>儲位</th></tr></thead>
+                    <tbody id="lowStockPreviewTbody"><tr><td colspan="5" class="text-center py-4">載入中...</td></tr></tbody>
                 </table>
             </div>
         </div>
     </div>
 
-    <!-- 停留超時預警（預設折疊） -->
+    <!-- 停留超時預警（電腦版預設展開，手機版折疊） -->
     <div class="bg-white rounded-xl shadow p-4">
         <div class="flex justify-between items-center cursor-pointer" onclick="toggleAlert('timeoutAlert')">
             <h2 class="text-lg font-bold">⏰ 停留超時預警</h2>
             <span id="timeoutAlertIcon" class="text-xl">▼</span>
         </div>
-        <div id="timeoutAlertContent" class="mt-2 hidden">
+        <div id="timeoutAlertContent" class="mt-2">
             <div class="overflow-x-auto max-h-64 overflow-y-auto">
                 <table class="data-table timeout-table text-sm">
-                    <thead class="sticky-header">
-                        <tr><th>單據/箱號</th><th>節點</th><th>已停留(小時)</th></tr>
-                    </thead>
-                    <tbody id="timeoutPreviewTbody">
-                        <tr><td colspan="3" class="text-center py-4">載入中...</tbody>
-                    </tbody>
+                    <thead class="sticky-header"><tr><th>單據/箱號</th><th>節點</th><th>已停留(小時)</th></tr></thead>
+                    <tbody id="timeoutPreviewTbody"><tr><td colspan="3" class="text-center py-4">載入中...</td></tr></tbody>
                 </table>
             </div>
         </div>
     </div>
 
     <!-- 浮動重新整理按鈕 -->
-    <div id="floatingRefresh" class="floating-refresh touch-btn">
-        <i class="fas fa-sync-alt"></i>
-    </div>
+    <div id="floatingRefresh" class="floating-refresh"><i class="fas fa-sync-alt"></i></div>
 </div>
 
 <script>
@@ -243,26 +255,44 @@
             document.getElementById('inboundCount').innerText = data.inbound_pending || 0;
             document.getElementById('pickingCount').innerText = data.picking_pending || 0;
             document.getElementById('stocktakeCount').innerText = data.stocktake_pending || 0;
+            // 電腦版表格
+            const tbody = document.getElementById('workerLoadTbody');
+            if (!data.worker_load || data.worker_load.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4">暫無指派任務</td></tr>';
+            } else {
+                tbody.innerHTML = data.worker_load.map(w => `
+                    <tr>
+                        <td class="p-2">${escapeHtml(w.assigned_to)}</td>
+                        <td class="p-2 text-center">${w.inbound_count || 0}</td>
+                        <td class="p-2 text-center">${w.picking_count || 0}</td>
+                        <td class="p-2 text-center">${w.stocktake_count || 0}</td>
+                        <td class="p-2 text-center">${w.task_count || 0}</td>
+                        <td class="p-2 text-center"><button class="view-tasks bg-blue-500 text-white px-2 py-1 rounded text-xs" data-worker="${escapeHtml(w.assigned_to)}">查看任務</button></td>
+                    </tr>
+                `).join('');
+            }
+            // 手機版卡片
             const container = document.getElementById('workerLoadContainer');
             if (!data.worker_load || data.worker_load.length === 0) {
                 container.innerHTML = '<div class="text-center py-4 text-gray-500">暫無指派任務</div>';
-                return;
+            } else {
+                container.innerHTML = data.worker_load.map(w => `
+                    <div class="worker-card bg-gray-50 rounded-lg p-3 border">
+                        <div class="flex justify-between items-center">
+                            <span class="font-bold text-md">${escapeHtml(w.assigned_to)}</span>
+                            <span class="text-sm">合計: ${w.task_count} 件</span>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2 mt-2 text-center text-sm">
+                            <div><span class="text-blue-600">📥</span> 入庫 ${w.inbound_count}</div>
+                            <div><span class="text-green-600">📦</span> 檢貨 ${w.picking_count}</div>
+                            <div><span class="text-purple-600">📋</span> 盤點 ${w.stocktake_count}</div>
+                        </div>
+                        <button class="view-tasks-mobile bg-blue-500 text-white px-3 py-1 rounded text-xs mt-2 w-full" data-worker="${escapeHtml(w.assigned_to)}">查看任務</button>
+                    </div>
+                `).join('');
             }
-            container.innerHTML = data.worker_load.map(w => `
-                <div class="worker-card bg-gray-50 rounded-lg p-3 border">
-                    <div class="flex justify-between items-center">
-                        <span class="font-bold text-md">${escapeHtml(w.assigned_to)}</span>
-                        <span class="text-sm">合計: ${w.task_count} 件</span>
-                    </div>
-                    <div class="grid grid-cols-3 gap-2 mt-2 text-center text-sm">
-                        <div><span class="text-blue-600">📥</span> 入庫 ${w.inbound_count}</div>
-                        <div><span class="text-green-600">📦</span> 檢貨 ${w.picking_count}</div>
-                        <div><span class="text-purple-600">📋</span> 盤點 ${w.stocktake_count}</div>
-                    </div>
-                    <button class="view-tasks bg-blue-500 text-white px-3 py-1 rounded text-xs mt-2 w-full touch-btn" data-worker="${escapeHtml(w.assigned_to)}">查看任務</button>
-                </div>
-            `).join('');
-            document.querySelectorAll('.view-tasks').forEach(btn => {
+            // 綁定按鈕事件（電腦版和手機版）
+            document.querySelectorAll('.view-tasks, .view-tasks-mobile').forEach(btn => {
                 btn.onclick = () => {
                     const workerName = btn.dataset.worker;
                     window.open(`/worker_dashboard.html?user=${encodeURIComponent(workerName)}`, '_blank');
@@ -277,10 +307,10 @@
             const lowStock = data.low_stock_items ? data.low_stock_items.slice(0, 5) : [];
             const lowStockTbody = document.getElementById('lowStockPreviewTbody');
             if (lowStock.length === 0) {
-                lowStockTbody.innerHTML = '</td><td colspan="5" class="text-center py-4">✅ 暫無低於安全庫存物料</tbody>';
+                lowStockTbody.innerHTML = '<tr><td colspan="5" class="text-center py-4">✅ 暫無低於安全庫存物料</td></tr>';
             } else {
                 lowStockTbody.innerHTML = lowStock.map(item => `
-                    <table>
+                    <tr>
                         <td class="p-2">${escapeHtml(item.material_code)}</td>
                         <td class="p-2">${escapeHtml(item.name)}</td>
                         <td class="p-2 text-center">${item.main_stock}</td>
@@ -292,7 +322,7 @@
             const timeout = data.timeout_alerts ? data.timeout_alerts.slice(0, 5) : [];
             const timeoutTbody = document.getElementById('timeoutPreviewTbody');
             if (timeout.length === 0) {
-                timeoutTbody.innerHTML = '<tr><td colspan="3" class="text-center py-4">✅ 暫無超時停留單據</tbody>';
+                timeoutTbody.innerHTML = '<tr><td colspan="3" class="text-center py-4">✅ 暫無超時停留單據</td></tr>';
             } else {
                 timeoutTbody.innerHTML = timeout.map(alert => `
                     <tr>
@@ -305,13 +335,35 @@
         } catch(e) { console.error(e); }
     }
 
+    // 根據屏幕寬度設定預警初始展開/折疊（電腦版展開，手機版折疊）
+    function initAlerts() {
+        const isMobile = window.innerWidth <= 640;
+        const stockContent = document.getElementById('stockAlertContent');
+        const timeoutContent = document.getElementById('timeoutAlertContent');
+        const stockIcon = document.getElementById('stockAlertIcon');
+        const timeoutIcon = document.getElementById('timeoutAlertIcon');
+        if (isMobile) {
+            stockContent.classList.add('hidden');
+            timeoutContent.classList.add('hidden');
+            stockIcon.innerHTML = '▼';
+            timeoutIcon.innerHTML = '▼';
+        } else {
+            stockContent.classList.remove('hidden');
+            timeoutContent.classList.remove('hidden');
+            stockIcon.innerHTML = '▲';
+            timeoutIcon.innerHTML = '▲';
+        }
+    }
+
     function logout() { localStorage.clear(); location.href = 'login.html'; }
 
     if (checkAccess()) {
         loadSummary();
         loadAlerts();
+        initAlerts();
         document.getElementById('floatingRefresh').onclick = () => { loadSummary(); loadAlerts(); };
         setInterval(() => { loadSummary(); loadAlerts(); }, 30000);
+        window.addEventListener('resize', initAlerts);
     }
 </script>
 </body>
