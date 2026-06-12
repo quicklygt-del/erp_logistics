@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
     <title>領退料管理</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
@@ -10,6 +10,7 @@
         .btn { padding: 0.75rem 1rem; border-radius: 0.5rem; font-weight: 600; }
         .card { background: white; border-radius: 1rem; box-shadow: 0 2px 6px rgba(0,0,0,0.1); padding: 1rem; margin-bottom: 1.5rem; }
         .table-responsive { overflow-x: auto; }
+        .touch-btn { min-height: 48px; }
         @media (max-width: 640px) {
             .btn { font-size: 0.9rem; padding: 0.6rem 0.8rem; }
             input, select { font-size: 16px; }
@@ -18,9 +19,9 @@
 </head>
 <body class="bg-gray-100 p-4">
 <div class="max-w-4xl mx-auto">
-    <div class="flex justify-between items-center mb-4">
+    <div class="flex justify-between items-center mb-4 flex-wrap gap-2">
         <h1 class="text-2xl font-bold">📦 領退料管理</h1>
-        <button onclick="location.href='worker_dashboard.html'" class="bg-gray-500 text-white px-3 py-1 rounded text-sm">← 工作台</button>
+        <button onclick="location.href='worker_dashboard.html'" class="bg-gray-500 text-white px-3 py-2 rounded text-sm">← 工作台</button>
     </div>
 
     <!-- 新增单据卡片 -->
@@ -47,24 +48,24 @@
         </div>
         <div class="mb-3">
             <div class="flex flex-wrap gap-2 items-center">
-                <input type="text" id="scanMaterialCode" placeholder="掃描或輸入料號" class="border flex-1 p-2 rounded">
-                <input type="number" id="scanQty" placeholder="數量" value="1" class="border w-24 p-2 rounded">
-                <button id="addByScanBtn" class="bg-blue-600 text-white px-3 py-2 rounded">加入</button>
-                <button id="cameraBtn" class="bg-purple-600 text-white px-3 py-2 rounded">📷 掃描</button>
+                <input type="text" id="scanMaterialCode" placeholder="掃描或輸入料號" class="border flex-1 p-3 rounded touch-input">
+                <input type="number" id="scanQty" placeholder="數量" value="1" class="border w-24 p-3 rounded touch-input">
+                <button id="addByScanBtn" class="bg-blue-600 text-white px-4 py-3 rounded touch-btn">加入</button>
+                <button id="cameraBtn" class="bg-purple-600 text-white px-4 py-3 rounded touch-btn">📷 掃描</button>
             </div>
             <div id="reader" class="hidden mt-2"></div>
         </div>
         <div class="table-responsive">
             <table class="min-w-full border text-sm">
                 <thead class="bg-gray-50">
-                    <tr><th>料號</th><th>品名</th><th>規格</th><th>數量</th><th>備註</th><th>操作</th><tr>
+                    <tr><th>料號</th><th>品名</th><th>規格</th><th>數量</th><th>備註</th><th>操作</th></tr>
                 </thead>
                 <tbody id="itemsTbody">
-                    <td><td colspan="6" class="text-center py-2">暫無物料</tbody>
+                    <tr><td colspan="6" class="text-center py-2">暫無物料</tbody>
                 </tbody>
             </table>
         </div>
-        <button id="submitBtn" class="btn bg-green-600 text-white w-full mt-3">✅ 提交單據</button>
+        <button id="submitBtn" class="btn bg-green-600 text-white w-full mt-3 touch-btn">✅ 提交單據</button>
         <div id="submitMsg" class="text-sm mt-2"></div>
     </div>
 
@@ -72,7 +73,7 @@
     <div class="card">
         <div class="flex justify-between items-center mb-3">
             <h2 class="text-xl font-bold">📜 歷史紀錄</h2>
-            <button id="exportBtn" class="bg-green-600 text-white px-3 py-1 rounded text-sm">📎 匯出 Excel</button>
+            <button id="exportBtn" class="bg-green-600 text-white px-3 py-2 rounded text-sm">📎 匯出 Excel</button>
         </div>
         <div class="flex flex-wrap gap-2 mb-3">
             <input type="date" id="startDate" class="border p-2 rounded">
@@ -82,7 +83,7 @@
                 <option value="ISSUE">領料</option>
                 <option value="RETURN">退料</option>
             </select>
-            <button id="searchBtn" class="bg-blue-600 text-white px-3 py-2 rounded">查詢</button>
+            <button id="searchBtn" class="bg-blue-600 text-white px-4 py-2 rounded touch-btn">查詢</button>
         </div>
         <div class="table-responsive">
             <table class="min-w-full border text-sm">
@@ -151,7 +152,9 @@
                 });
             }
             renderItemsTable();
-        } catch(e) { alert(`料號 ${materialCode} 不存在`); }
+        } catch(e) {
+            alert(`料號 ${materialCode} 不存在，請確認後重新掃描`);
+        }
     }
 
     function renderItemsTable() {
@@ -212,24 +215,35 @@
     };
 
     async function startCamera() {
+        if (html5QrCode) await html5QrCode.stop();
         const readerDiv = document.getElementById('reader');
         readerDiv.classList.remove('hidden');
-        if (html5QrCode) await html5QrCode.stop();
-        html5QrCode = new Html5Qrcode("reader");
+        readerDiv.innerHTML = `<div id="qr-reader" style="width:100%;"></div><button id="closeCameraBtn" class="mt-2 bg-gray-500 text-white px-3 py-2 rounded">關閉相機</button>`;
+        const qrReader = new Html5Qrcode("qr-reader");
+        html5QrCode = qrReader;
         try {
-            await html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } },
+            await qrReader.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } },
                 (decodedText) => {
-                    html5QrCode.stop();
+                    qrReader.stop().catch(console.warn);
                     readerDiv.classList.add('hidden');
                     document.getElementById('scanMaterialCode').value = decodedText;
                     const qty = parseInt(document.getElementById('scanQty').value) || 1;
                     addMaterial(decodedText, qty);
                     document.getElementById('scanMaterialCode').value = '';
                     document.getElementById('scanQty').value = '1';
+                    html5QrCode = null;
                 },
-                () => {}
-            );
-        } catch(err) { alert('無法啟動相機: ' + err); readerDiv.classList.add('hidden'); }
+                () => {});
+            document.getElementById('closeCameraBtn').onclick = () => {
+                qrReader.stop().catch(console.warn);
+                readerDiv.classList.add('hidden');
+                html5QrCode = null;
+            };
+        } catch(err) {
+            alert('無法啟動相機: ' + err.message);
+            readerDiv.classList.add('hidden');
+            html5QrCode = null;
+        }
     }
 
     document.getElementById('cameraBtn').onclick = () => startCamera();
@@ -304,7 +318,6 @@
 
     document.getElementById('searchBtn').onclick = () => loadHistory(0);
 
-    // 导出 Excel 修复：使用 fetch 带 token
     document.getElementById('exportBtn').onclick = async () => {
         const startDate = document.getElementById('startDate').value;
         const endDate = document.getElementById('endDate').value;
@@ -314,14 +327,8 @@
         if (endDate) url += `end_date=${endDate}&`;
         if (transType) url += `transaction_type=${transType}`;
         try {
-            const response = await fetch(url, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (!response.ok) {
-                const error = await response.text();
-                alert('匯出失敗: ' + error);
-                return;
-            }
+            const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+            if (!response.ok) throw new Error(await response.text());
             const blob = await response.blob();
             const downloadUrl = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -331,9 +338,7 @@
             a.click();
             a.remove();
             window.URL.revokeObjectURL(downloadUrl);
-        } catch(e) {
-            alert('匯出錯誤: ' + e.message);
-        }
+        } catch(e) { alert('匯出錯誤: ' + e.message); }
     };
 
     loadDepartments();
