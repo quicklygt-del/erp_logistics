@@ -193,13 +193,18 @@
         }
     }
 
-    function verifyQrImage(container) {
+    function hasRenderedQr(container) {
         const img = container.querySelector('img');
-        if (!img || !img.src) {
-            container.innerHTML = '<p class="text-red-500 text-sm">QR 碼生成失敗，請關閉後重試</p>';
-            return false;
-        }
-        return true;
+        if (img && img.src) return true;
+        if (container.querySelector('table')) return true;
+        if (container.querySelector('canvas')) return true;
+        return false;
+    }
+
+    function verifyQrImage(container) {
+        if (hasRenderedQr(container)) return true;
+        container.innerHTML = '<p class="text-red-500 text-sm">QR 碼生成失敗，請關閉後重試</p>';
+        return false;
     }
 
     function showQR(code, name, spec) {
@@ -217,7 +222,7 @@
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
                 if (renderQRCode(container, code, name, spec)) {
-                    setTimeout(() => verifyQrImage(container), 150);
+                    setTimeout(() => verifyQrImage(container), 300);
                 }
             });
         });
@@ -225,10 +230,15 @@
 
     document.getElementById('closeModalBtn').onclick = () => document.getElementById('qrModal').classList.add('hidden');
     document.getElementById('printQrBtn').onclick = () => {
-        const img = document.querySelector('#qrCodeContainer img');
-        if (!img) { alert('QR 碼尚未生成'); return; }
+        const container = document.getElementById('qrCodeContainer');
+        const img = container.querySelector('img');
+        const table = container.querySelector('table');
+        if (!img && !table) { alert('QR 碼尚未生成'); return; }
         const w = window.open('');
-        w.document.write(`<html><head><title>列印</title></head><body><img src="${img.src}" style="width:200px;"><p>${window._printData.code}<br>${window._printData.name}</p><script>window.onload=function(){window.print();window.close();}<\/script></body></html>`);
+        const body = img
+            ? `<img src="${img.src}" style="width:200px;">`
+            : `<div style="width:200px;">${table.outerHTML}</div>`;
+        w.document.write(`<html><head><title>列印</title></head><body>${body}<p>${window._printData.code}<br>${window._printData.name}</p><script>window.onload=function(){window.print();window.close();}<\/script></body></html>`);
     };
 
     function logout() { localStorage.clear(); location.href = 'login.html'; }
