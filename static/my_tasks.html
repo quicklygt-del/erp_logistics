@@ -82,15 +82,18 @@
             container.innerHTML = tasks.map(t => `
                 <div class="border rounded p-3 mb-2 flex justify-between items-center">
                     <div><strong>${escapeHtml(t.sheet_no)}</strong> - 倉庫:${escapeHtml(t.warehouse)} 狀態:${t.status}</div>
-                    <button class="start-sheet bg-green-600 text-white px-3 py-2 rounded text-sm touch-btn" data-sheet="${t.sheet_no}">開始盤點</button>
+                    <button class="start-sheet bg-green-600 text-white px-3 py-2 rounded text-sm touch-btn" data-sheet="${t.sheet_no}" data-status="${t.status}">開始盤點</button>
                 </div>
             `).join('');
             document.querySelectorAll('.start-sheet').forEach(btn => {
                 btn.onclick = async () => {
                     currentSheetNo = btn.dataset.sheet;
+                    const currentStatus = btn.dataset.status;
                     try {
-                        // 先调用开始盘点 API
-                        await apiFetch(`${API_BASE}/inventory/sheets/${currentSheetNo}/start`, { method: 'PATCH' });
+                        // 如果狀態不是「進行中」，則調用開始盤點 API
+                        if (currentStatus !== '進行中') {
+                            await apiFetch(`${API_BASE}/inventory/sheets/${currentSheetNo}/start`, { method: 'PATCH' });
+                        }
                         await loadSheetItems();
                         document.getElementById('workingArea').classList.remove('hidden');
                         document.getElementById('taskList').classList.add('hidden');
@@ -98,7 +101,16 @@
                         document.getElementById('scanMaterialCode').focus();
                         if (html5QrCode) { await html5QrCode.stop(); document.getElementById('reader').classList.add('hidden'); }
                     } catch(e) {
-                        alert('開始盤點失敗: ' + e.message);
+                        // 如果錯誤訊息包含「不允許開始」，可能已經開始，嘗試直接載入
+                        if (e.message.includes('不允許開始')) {
+                            await loadSheetItems();
+                            document.getElementById('workingArea').classList.remove('hidden');
+                            document.getElementById('taskList').classList.add('hidden');
+                            document.getElementById('sheetTitle').innerHTML = `正在盤點：${currentSheetNo}`;
+                            document.getElementById('scanMaterialCode').focus();
+                        } else {
+                            alert('開始盤點失敗: ' + e.message);
+                        }
                     }
                 };
             });
